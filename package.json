@@ -1,0 +1,17 @@
+{
+  "name": "meiiijas-finance-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "set-webhook": "node scripts/set-webhook.mjs"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.34.0",
+    "unpdf": "^1.9.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
