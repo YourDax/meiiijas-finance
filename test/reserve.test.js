@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { computePeriod, dn, isReserveBill, planReserve, weekdaysBetween } from '../lib/period.js';
+import { workdaysBetween, isWorkday } from '../lib/calendar.js';
 import { processUpdate } from '../lib/engine.js';
 import { handleMessage, normalize } from '../lib/bot.js';
 import { formatPlanFull as formatPlan } from '../lib/format.js';
@@ -147,13 +148,14 @@ test('/reserve: настройка, контракт, статус, выключ
 
 test('транспорт по формуле: карта + ставка за будние дни цикла', async () => {
   const today = at(2026, 9, 24);
-  assert.equal(weekdaysBetween(dn(2026, 9, 5), dn(2026, 10, 5)), 23); // 5 окт – 4 ноя
+  assert.equal(weekdaysBetween(dn(2026, 9, 5), dn(2026, 10, 5)), 23); // 5 окт – 4 ноя: будни
+  assert.equal(workdaysBetween(dn(2026, 9, 5), dn(2026, 10, 5)), 22); // 4 ноября — праздник
   assert.deepEqual(parseAny('транспорт карта 3500 + 180 по будням', today), { kind: 'transport', base: 3500, daily: 180 });
   const r = handleMessage('/transport 3500 180', base(), today);
   const it = r.data.items.find((i) => i.formula);
-  assert.deepEqual([it.spread, it.cat, it.amount], [true, 'transport', 3500 + 180 * 23]);
+  assert.deepEqual([it.spread, it.cat, it.amount], [true, 'transport', 3500 + 180 * 22]);
   const p = computePeriod(r.data, today);
-  assert.equal(p.spread.find((s) => s.name === 'Транспорт').amount, 7640);
+  assert.equal(p.spread.find((s) => s.name === 'Транспорт').amount, 7460);
   // в другом цикле — своё число будней (5 ноя – 4 дек: 22 будних)
   const next = at(2026, 10, 10);
   assert.equal(computePeriod(r.data, next).spread.find((s) => s.name === 'Транспорт').amount, 3500 + 180 * 22);
@@ -254,4 +256,37 @@ test('короткая фраза «Резерв 100» — это взнос в 
     assert.equal(r?.kind, 'rdeposit', s);
   }
   assert.equal(parseAny('Резерв 100', at(2026, 9, 28)).amount, 100);
+});
+
+test('производственный календарь: в ноябре 2026 — 20 рабочих дней, в декабре — 22', () => {
+  assert.equal(workdaysBetween(dn(2026, 10, 1), dn(2026, 11, 1)), 20); // 4 ноября — праздник
+  assert.equal(workdaysBetween(dn(2026, 11, 1), dn(2027, 0, 1)), 22); // 31 декабря — выходной
+  assert.equal(isWorkday(dn(2026, 0, 12)), true, '12 января 2026 остаётся рабочим');
+  assert.equal(isWorkday(dn(2026, 2, 9)), false, '8 марта выпало на воскресенье — выходной 9-го');
+  assert.equal(isWorkday(dn(2026, 4, 11)), false, '9 мая выпало на субботу — выходной 11-го');
+  assert.equal(workdaysBetween(dn(2026, 10, 1), dn(2026, 10, 8)), 4); // 2, 3, 5, 6 ноября (4-го праздник)
+});
+
+test('транспорт на календарный месяц: цикл с 1-го даёт 3500 + 180 × 20 за ноябрь', () => {
+  const t = at(2026, 10, 6);
+  let r = handleMessage('/cycle 1', base(), t);
+  r = handleMessage('/transport 3500 180', r.data, t);
+  assert.equal(r.data.items.find((i) => i.formula).amount, 3500 + 180 * 20);
+});
+
+test('траты «в течение месяца»: резервируется весь остаток, а не доля на дни до дохода', () => {
+  const t = at(2026, 10, 6);
+  const d = normalize({
+    balance: { amount: 30000, ts: t.ts - 1000 },
+    items: [
+      { id: 'a', type: 'income', amount: 60000, day: 10, name: 'Зарплата' },
+      { id: 'b', type: 'income', amount: 25000, day: 25, name: 'Аванс' },
+      { id: 'pet', type: 'bill', amount: 4000, day: null, spread: true, cat: 'pets', name: 'Домашнее животное' },
+    ],
+    spends: [{ id: 's', amount: 160, cat: 'pets', ts: t.ts - 3600000 }],
+  });
+  const p = computePeriod(d, t);
+  assert.equal(p.spread[0].reserve, 3840, 'не 4 дня из цикла, а весь остаток 4000 − 160');
+  assert.equal(p.reserveTotal, 3840);
+  assert.doesNotMatch(formatPlan(d, t), /на эти дни/);
 });

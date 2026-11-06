@@ -255,8 +255,10 @@ test('/cycle задаёт день начала цикла и меняет ре�
   assert.equal(computePeriod(d, today).reserveTotal, 2700); // цикл 5 -> 5, последний период
   const r = handleMessage('/cycle 20', d, today);
   assert.equal(r.data.settings.cycleAnchor, 20);
-  // цикл 20 окт -> 20 ноя: осталось 27 дн., период 12 дн. => 12/27 остатка
-  assert.equal(computePeriod(r.data, today).reserveTotal, r2(2700 * 12 / 27));
+  // цикл 20 окт -> 20 ноя: резервируется весь остаток траты, без деления на дни периода
+  const p20 = computePeriod(r.data, today);
+  assert.equal(p20.cycleEnd, dn(2026, 10, 20));
+  assert.equal(p20.reserveTotal, 2700);
   assert.match(handleMessage('/cycle auto', r.data, today).reply, /авто/);
   assert.match(handleMessage('/cycle', d, today).reply, /Цикл бюджета сейчас/);
 });
@@ -272,10 +274,10 @@ test('транспорт по формуле: резервируются буд�
     spends: [{ id: 's', amount: 7100, cat: 'transport', ts: sunday.ts - 86400000 }],
   });
   const p = computePeriod(d, sunday);
-  // будни 26–30 октября (5) и 2–4 ноября (3) = 8 дней × 180
-  assert.equal(p.spread[0].reserve, 1440);
-  assert.equal(p.pool, 7159 - 1440);
-  assert.match(formatDigest(d, sunday), /Уже вычтено обязательное: транспорт 1 440/);
+  // рабочие дни: 26–30 октября (5) и 2–3 ноября (2) = 7 × 180; 4 ноября — праздник
+  assert.equal(p.spread[0].reserve, 1260);
+  assert.equal(p.pool, 7159 - 1260);
+  assert.match(formatDigest(d, sunday), /Уже вычтено обязательное: транспорт 1 260/);
 });
 
 test('короткая сводка показывает, из чего состоят обязательные траты', async () => {
@@ -291,7 +293,7 @@ test('короткая сводка показывает, из чего сост
     spends: [{ id: 's1', amount: 7100, cat: 'transport', ts: sunday.ts - 86400000 }, { id: 's2', amount: 3530, cat: 'pets', ts: sunday.ts - 86400000 }],
   });
   const text = formatPlan(d, sunday);
-  assert.match(text, /обязательные траты 1 910 ₽ \(транспорт 1 440 ₽, домашнее животное 470 ₽\)/);
+  assert.match(text, /обязательные траты 1 730 ₽ \(транспорт 1 260 ₽, домашнее животное 470 ₽\)/);
 });
 
 test('сообщение о пополнении показывает деньги на карте с учётом трат после /balance', async () => {

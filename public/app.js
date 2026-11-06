@@ -260,7 +260,7 @@ function reserveTab() {
   const incomes = s.items.filter((i) => i.type === 'income' && !i.once);
   if (!r) return `<h1>Резерв</h1><div class="card"><p>Резерв — отдельный счёт под аренду, коммуналку и интернет. Платежи из него не уменьшают остаток на карте.</p>
     ${btn('🏠 Включить резерв', 'reserve-set', {}, 'block')}</div>
-    <h2>Транспорт</h2><div class="card"><p class="small muted">Формула: проездной + ставка за каждый будний день цикла.</p>${btn('🚌 Настроить транспорт', 'transport', {}, 'ghost block')}</div>`;
+    <h2>Транспорт</h2><div class="card"><p class="small muted">Формула: проездной + ставка за каждый рабочий день цикла (по производственному календарю).</p>${btn('🚌 Настроить транспорт', 'transport', {}, 'ghost block')}</div>`;
   return `<h1>Резерв</h1>
     <div class="card hero"><div class="small muted">Отложено на аренду и коммуналку</div><div class="big">${money(r.amount)}</div>
       ${r.contract ? `<div class="small muted">Счёт: договор …${esc(r.contract)}</div>` : ''}
@@ -536,7 +536,7 @@ const H = {
   async 'reserve-contract-save'() { if (val('number').replace(/\D/g, '').length < 3) return toast('Нужно хотя бы 3 цифры', true); if (await act('reserve_contract', { number: val('number') })) closeSheet(); },
   async 'reserve-off'() { if (await ask('Выключить резерв? Платежи будут считаться с карты.')) await act('reserve_off'); },
   transport() {
-    sheet('Транспорт по формуле', `<p class="small muted">Проездной + ставка за каждый будний день цикла. Дальше бот пересчитывает сам.</p>${field('base', 'Проездной', 'inputmode="decimal" placeholder="3500"')}${field('daily', 'За каждый будний день', 'inputmode="decimal" placeholder="180"')}${buttons(btn('Сохранить', 'transport-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+    sheet('Транспорт по формуле', `<p class="small muted">Проездной + ставка за каждый рабочий день цикла (по производственному календарю). Дальше бот пересчитывает сам.</p>${field('base', 'Проездной', 'inputmode="decimal" placeholder="3500"')}${field('daily', 'За каждый будний день', 'inputmode="decimal" placeholder="180"')}${buttons(btn('Сохранить', 'transport-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
   },
   async 'transport-save'() {
     const base = parseAmt(val('base')); const daily = parseAmt(val('daily'));
