@@ -16,8 +16,13 @@ if (PUBLIC_URL) console.log(await api('setWebhook', {
   secret_token: WEBHOOK_SECRET || undefined,
   allowed_updates: ['message', 'callback_query'],
 }));
+// Кнопка «Бюджет» в меню всех личных чатов с ботом открывает мини-приложение
+if (PUBLIC_URL) console.log(await api('setChatMenuButton', {
+  menu_button: { type: 'web_app', text: 'Бюджет', web_app: { url: PUBLIC_URL.replace(/\/$/, '') } },
+}));
 console.log(await api('setMyCommands', {
   commands: [
+    { command: 'app', description: '📱 Мини-приложение' },
     { command: 'guide', description: '🧭 Что внести и что можно делать' },
     { command: 'plan', description: '📊 План месяца' },
     { command: 'income', description: '💰 Добавить доход: сумма день название' },
