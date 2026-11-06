@@ -58,6 +58,15 @@ test('«Пришло» увеличивает остаток один раз и 
   assert.equal(computePeriod(d, today).now, 90000);
 });
 
+test('без заданного остатка зарплата прошлого месяца, подтверждённая в новом, пополняет баланс', () => {
+  const t = at(2026, 10, 3);
+  const d = { items: [{ id: 'sal', type: 'income', amount: 60000, day: 31, name: 'Зарплата' }], spends: [], done: {}, goals: [] };
+  const key = computePeriod(d, t).pending[0].key;
+  assert.equal(key, 'sal:20261031');
+  confirmOccurrence(d, key, t);
+  assert.equal(computePeriod(d, t).now, 60000);
+});
+
 test('«Не было» ничего не меняет в остатке', () => {
   const d = base({ balance: { amount: 30000, ts: new Date(2026, 9, 18, 8).getTime() } });
   const key = computePeriod(d, today).pending[0].key;
