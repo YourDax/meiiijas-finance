@@ -21,3 +21,37 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+
+  # Автодеплой в production после зелёных тестов на main.
+  # Включается только если в репозитории задан секрет VERCEL_TOKEN (Settings → Secrets and variables → Actions).
+  # Если проект Vercel привязан к GitHub (Settings → Git), секрет не нужен — Vercel задеплоит сам, тогда эту работу можно не включать.
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency: production-deploy
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: team_5LXr6GT7MxKXnifGxE0ZFLtj
+      VERCEL_PROJECT_ID: prj_M3ppTSNLIxH6cBJBSPZbg6SOHtEb
+    steps:
+      - name: Проверить, что деплой включён
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then echo "VERCEL_TOKEN не задан — автодеплой из GitHub Actions пропущен"; exit 0; fi
+          echo "DEPLOY=1" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        if: env.DEPLOY == '1'
+      - name: Деплой в production
+        if: env.DEPLOY == '1'
+        run: npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+      - name: Проверка после деплоя
+        if: env.DEPLOY == '1'
+        run: |
+          # Вебхук жив и защищён: без секрета должен отвечать 401
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST https://meiiijas-finance-bot.vercel.app/api/webhook)
+          echo "webhook без секрета: $code"
+          test "$code" = "401"
+          # Мини-приложение отдаётся
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://meiiijas-finance-bot.vercel.app/)
+          echo "мини-приложение: $code"
+          test "$code" = "200"
