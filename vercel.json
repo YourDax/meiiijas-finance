@@ -3,6 +3,7 @@
   "outputDirectory": "public",
   "functions": {
     "api/webhook.js": { "maxDuration": 30 },
-    "api/app.js": { "maxDuration": 30 }
+    "api/app.js": { "maxDuration": 30 },
+    "api/cron.js": { "maxDuration": 60 }
   }
 }
