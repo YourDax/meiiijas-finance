@@ -88,3 +88,56 @@ label { display: block; font-size: 13px; color: var(--hint); margin: 12px 0 4px;
 #toast { position: fixed; left: 16px; right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); background: #202328; color: #fff; padding: 11px 14px; border-radius: 12px; z-index: 30; text-align: center; font-size: 15px; }
 #toast.err { background: var(--bad); }
 .spin { opacity: .6; pointer-events: none; }
+
+/* Нажимаемые элементы: единый отклик и крупные зоны касания */
+.tap, [role=button][data-act] { cursor: pointer; }
+.tap:active, .card[data-act]:active { opacity: .8; }
+[role=button]:focus-visible, button:focus-visible { outline: 2px solid var(--btn); outline-offset: 2px; }
+button { min-height: 44px; }
+button.small { min-height: 40px; }
+.hint-edit { float: right; font-size: 12px; opacity: .8; }
+.steps > div { padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.steps > div:first-child { margin-top: 8px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.chip { min-height: 34px; padding: 4px 12px; border-radius: 999px; background: var(--bg2); color: var(--text); font-weight: 500; font-size: 14px; }
+.chip:active { background: var(--line); }
+#fab { position: fixed; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom)); width: 56px; height: 56px; min-height: 56px; border-radius: 50%; padding: 0; font-size: 30px; line-height: 1; box-shadow: 0 4px 14px rgba(0,0,0,.25); z-index: 6; }
+#fab:active { transform: scale(.94); }
+body { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
+#toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
+
+/* Свайп по трате: влево — удалить, вправо — изменить */
+.swipe { position: relative; overflow: hidden; background: var(--bg); }
+.swipe .sw { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding: 0 18px; font-weight: 600; font-size: 14px; color: #fff; }
+.swipe .sw-l { left: 0; background: var(--btn); }
+.swipe .sw-r { right: 0; background: var(--bad); }
+.swipe .item { position: relative; background: var(--bg); touch-action: pan-y; border-bottom: 1px solid var(--line); }
+.swipe:last-child .item { border-bottom: 0; }
+
+/* Динамика трат: 14 дней столбиками */
+.spark { display: flex; align-items: flex-end; gap: 3px; height: 44px; margin: 10px 0 4px; }
+.spark i { flex: 1; background: color-mix(in srgb, var(--btn) 35%, transparent); border-radius: 3px 3px 0 0; min-height: 3px; }
+.spark i.today { background: var(--btn); }
+
+/* Скелетон вместо «Загрузка…» */
+.card.sk { height: 84px; background: linear-gradient(90deg, var(--bg) 25%, color-mix(in srgb, var(--hint) 18%, var(--bg)) 50%, var(--bg) 75%); background-size: 200% 100%; animation: shimmer 1.3s infinite linear; }
+.card.sk.tall { height: 190px; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .card.sk { animation: none; } .sheet { animation: none; } }
+
+/* Тост с кнопкой «Отменить» */
+#toast { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.toast-btn { min-height: 32px; padding: 4px 12px; border-radius: 8px; background: rgba(255,255,255,.2); color: #fff; font-size: 14px; }
+
+/* Контраст статусных цветов (WCAG AA на светлом фоне) и тёмная тема */
+:root { --hint: var(--tg-theme-hint-color, #667085); --ok: #1f7a48; --warn: #a86500; --bad: #c23030; }
+:root[data-theme="dark"] { --ok: #4cc38a; --warn: #f0b232; --bad: #ff7676; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: var(--tg-theme-bg-color, #1c1d21); --bg2: var(--tg-theme-secondary-bg-color, #111215); --text: var(--tg-theme-text-color, #eceef2); --hint: var(--tg-theme-hint-color, #9aa3b2); --ok: #4cc38a; --warn: #f0b232; --bad: #ff7676; }
+}
+
+/* Безопасные зоны: «чёлка», жесты iOS, полноэкранный режим Telegram, альбомная ориентация */
+#app { padding-top: calc(12px + var(--tg-content-safe-area-inset-top, 0px) + var(--tg-safe-area-inset-top, 0px)); padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+#tabs { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+#fab { right: max(16px, env(safe-area-inset-right)); }
+#toast[hidden] { display: none; }
