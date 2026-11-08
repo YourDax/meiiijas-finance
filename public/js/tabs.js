@@ -7,6 +7,9 @@ import { compareSpends, matchesQuery } from '../stats.js';
 // ---------- вкладки ----------
 export const TABS = [['home', '🏠', 'Главная'], ['spends', '🧾', 'Траты'], ['plan', '📅', 'План'], ['goals', '🎯', 'Цели'], ['reserve', '🏦', 'Резерв'], ['more', '⚙️', 'Ещё']];
 
+// Деньги на карте сейчас (после последнего ответа сервера)
+export const curBalance = () => (S.state.balance ? S.state.cardBalance : S.state.period.now);
+
 export function budgetChip() {
   if (S.chats.length < 2) return '';
   const cur = S.chats.find((c) => c.id === S.chatId);
@@ -22,7 +25,7 @@ export function homeTab() {
       <div class="grow"><b>${esc(o.name)}</b><div class="small muted">${isoStr(o.date)}${o.fromReserve ? ' · из резерва' : ''}</div></div>
       <b class="${o.type === 'income' ? 'pos' : ''}">${o.type === 'income' ? '+' : '−'}${money(o.amount)}</b></div>
       <div class="row gap" style="margin-top:10px">
-        ${btn(o.type === 'income' ? '✅ Пришло' : '✅ Оплачено', 'occ', { key: o.key }, 'grow')}
+        ${btn(o.type === 'income' ? '✅ Получено' : '✅ Оплачено', 'occ', { key: o.key }, 'grow')}
         ${btn('Не было', 'occ', { key: o.key, skip: 1 }, 'ghost')}
       </div></div>`).join('');
   const gaps = p.gaps.map((g) => `<div class="card alert bad small">⚠️ Перед «${esc(g.name)}» (${isoStr(g.date)}) не хватит <b>${money(g.short)}</b></div>`).join('');
@@ -76,24 +79,38 @@ export function homeTab() {
 export // Строка платежа или дохода с кнопкой отметки: оплатить можно в любой момент, ошибочную отметку — снять
 const PAY_ICO = { open: '⏳', done: '✅', skipped: '⏭', auto: '✔️' };
 function payAction(o) {
-  if (o.status === 'open') {
-    if (o.type === 'income' && !o.past) return '<span class="tag">ждём</span>';
-    return btn(o.type === 'income' ? '✅ Пришло' : '✅ Оплачено', 'occ', { key: o.key }, 'small paybtn');
-  }
-  if (o.status === 'done' || o.status === 'skipped') return btn('↩️ Снять', 'occ-undo', { key: o.key }, 'ghost small');
-  return '<span class="tag">в остатке</span>';
+  const label = o.type === 'income' ? '✅ Получено' : '✅ Оплачено';
+  if (o.status === 'open') return btn(label, 'occ', { key: o.key }, 'small paybtn');
+  if (o.status === 'done' || o.status === 'skipped') return btn('↩️ Отменить', 'occ-undo', { key: o.key }, 'ghost small paybtn');
+  return btn(label, 'occ-auto', { key: o.key }, 'ghost small paybtn'); // дата раньше заданного остатка: спросим, прежде чем менять баланс
 }
 function payRow(o) {
-  const note = o.status === 'skipped' ? ' · не было' : o.status === 'done' ? ' · отмечено' : '';
-  return `<div class="item" data-act="item-edit" data-id="${esc(o.id)}"><div class="ico">${PAY_ICO[o.status]}</div><div class="grow"><div class="t">${esc(o.name)}</div><div class="s">${isoStr(o.date)}${note}</div></div>
-    <div class="amt ${o.type === 'income' ? 'pos' : ''}">${o.type === 'income' ? '+' : ''}${money(o.amount)}</div>${payAction(o)}</div>`;
+  const note = o.status === 'skipped' ? ' · не было' : o.status === 'done' ? ' · отмечено' : o.status === 'auto' ? ' · уже в остатке' : '';
+  const reserve = o.fromReserve && S.state.reserve ? ' · из резерва' : '';
+  return `<div class="item" data-act="item-edit" data-id="${esc(o.id)}"><div class="ico">${PAY_ICO[o.status]}</div><div class="grow"><div class="t">${esc(o.name)}</div><div class="s">${isoStr(o.date)}${reserve}${note}</div></div>
+    <div class="payside"><div class="amt ${o.type === 'income' ? 'pos' : ''}">${o.type === 'income' ? '+' : '−'}${money(o.amount)}</div>${payAction(o)}</div></div>`;
 }
+function spreadRow(s) {
+  const paid = s.remaining <= 0;
+  const action = !paid ? btn('✅ Оплачено', 'spread-pay', { id: s.id }, 'small paybtn')
+    : s.planSpendId ? btn('↩️ Отменить', 'spread-undo', { spend: s.planSpendId }, 'ghost small paybtn') : '<span class="tag">потрачено</span>';
+  return `<div class="item" data-act="item-edit" data-id="${esc(s.id)}"><div class="ico">${paid ? '✅' : catIcon(s.cat)}</div><div class="grow"><div class="t">${esc(s.name)}</div><div class="s">В течение месяца${s.spent > 0 ? ` · потрачено ${money(s.spent)} из ${money(s.amount)}` : ''}</div></div>
+    <div class="payside"><div class="amt">−${money(paid ? s.amount : s.remaining)}</div>${action}</div></div>`;
+}
+// Единый список плана: у каждого пункта своя кнопка, которая сразу меняет баланс
 function paymentsBlock() {
-  const list = S.state.payments ?? [];
-  if (!list.length) return '';
-  const open = list.filter((o) => o.status === 'open').length;
-  return `<h2>Оплаты и поступления${open ? ` · ждут отметки: ${open}` : ''}</h2><div class="list">${list.map(payRow).join('')}</div>
-    <p class="small muted">Платёж можно отметить оплаченным заранее. Отметил по ошибке — нажми «↩️ Снять», деньги вернутся.</p>`;
+  const s = S.state;
+  const pays = s.payments ?? [];
+  const spreads = s.spreadPayments ?? [];
+  const bills = pays.filter((o) => o.type === 'bill');
+  const incomes = pays.filter((o) => o.type === 'income');
+  if (!pays.length && !spreads.length) return '';
+  const wait = (l) => { const n = l.filter((o) => o.status === 'open').length; return n ? ` · ждут: ${n}` : ''; };
+  const list = (rows) => `<div class="list">${rows.join('')}</div>`;
+  return `<p class="small muted">Нажми «Оплачено» или «Получено», и сумма сразу спишется с баланса или добавится к нему. Нажал по ошибке — «↩️ Отменить», деньги вернутся.</p>
+    ${bills.length ? `<h2>Обязательные платежи${wait(bills)}</h2>${list(bills.map(payRow))}` : ''}
+    ${spreads.length ? `<h2>В течение месяца</h2>${list(spreads.map(spreadRow))}` : ''}
+    ${incomes.length ? `<h2>Поступления${wait(incomes)}</h2>${list(incomes.map(payRow))}` : ''}`;
 }
 
 // Сколько потрачено на этой неделе и в этом месяце против прошлых, и 14 дней столбиками
@@ -154,17 +171,18 @@ export function planTab() {
     <div class="item" data-act="item-edit" data-id="${esc(it.id)}"><div class="ico">${it.type === 'income' ? '💰' : it.spread ? catIcon(it.cat) : '📌'}</div>
       <div class="grow"><div class="t">${esc(it.name)}</div><div class="s">${whenText(it)}${it.type === 'bill' && !it.spread && it.fromReserve ? ' · 🏠 из резерва' : ''}${it.by ? ` · ${esc(it.by)}` : ''}</div></div>
       <div class="amt ${it.type === 'income' ? 'pos' : ''}">${money(it.amount)}</div></div>`).join('')}</div>` : '';
-  const by = (f) => s.items.filter(f).sort((a, b) => (a.day ?? 99) - (b.day ?? 99));
+  // Пункты, у которых сейчас нечего отмечать: разовые из других месяцев
+  const active = new Set([...(s.payments ?? []).map((o) => o.id), ...(s.spreadPayments ?? []).map((x) => x.id)]);
+  const other = s.items.filter((i) => !active.has(i.id)).sort((a, b) => (a.once ?? '').localeCompare(b.once ?? ''));
   return `
     <div class="row between"><h1>План</h1>${btn('➕ Добавить', 'item-add', {}, 'small')}</div>
-    <div class="card"><div class="row between"><span class="muted">Доходы в месяц</span><b class="pos">${money(s.plan.totalIncome)}</b></div>
+    <div class="card"><div class="row between tap" data-act="balance"><span>${s.period.reserveOn ? '💳 На карте' : '💼 На руках'} <span class="small muted">✏️</span></span><b class="mid">${money(curBalance())}</b></div>
+      ${s.reserve ? `<div class="row between"><span class="muted">🏠 В резерве</span><b>${money(s.reserve.amount)}</b></div>` : ''}
+      <div class="row between" style="margin-top:8px"><span class="muted">Доходы в месяц</span><b class="pos">${money(s.plan.totalIncome)}</b></div>
       <div class="row between"><span class="muted">Обязательные</span><b>${money(s.plan.totalBills)}</b></div>
       <div class="row between"><span class="muted">Свободно</span><b class="${s.plan.free < 0 ? 'neg' : ''}">${money(s.plan.free)}</b></div></div>
     ${paymentsBlock()}
-    ${sect('Доходы', by((i) => i.type === 'income' && !i.once))}
-    ${sect('Платежи по датам', by((i) => i.type === 'bill' && !i.spread && !i.once))}
-    ${sect('В течение месяца', by((i) => i.spread))}
-    ${sect('Разовые', by((i) => i.once && !i.spread))}
+    ${sect('Разовые в другие месяцы', other)}
     ${s.items.length ? '' : '<p class="muted center pad">Пока пусто. Добавь доход и обязательные платежи.</p>'}
     <div class="row gap wrap" style="margin-top:14px">
       ${btn('💬 Записать фразой', 'nl', {}, 'ghost small')}${btn('🗓 Прогноз', 'forecast', { k: 1 }, 'ghost small')}${btn('📋 Подробный план', 'view', { name: 'plan', title: 'План подробно' }, 'ghost small')}

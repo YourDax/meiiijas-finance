@@ -159,6 +159,54 @@ test('state: статусы платежей и доходов', () => {
   assert.ok(pays.every((x) => ['open', 'done', 'skipped', 'auto'].includes(x.status)));
 });
 
+test('план: доход можно отметить заранее, деньги считаются один раз', () => {
+  const b = budget();
+  const key = keyOf(b.data, 'Зарплата');
+  const before = computePeriod(normalize(b.data), today);
+  assert.equal(before.nextIncome.key, key);
+  const r = b.step('occ', { key });
+  assert.equal(r.balance.amount, 110000);
+  const p = computePeriod(normalize(r), today);
+  assert.notEqual(p.nextIncome.key, key, 'следующим доходом становится уже другой');
+  const u = b.step('occ_undo', { key });
+  assert.equal(u.balance.amount, 30000);
+  assert.deepEqual(computePeriod(normalize(u), today).pool, before.pool);
+});
+
+test('план: платёж после ближайшего дохода, оплаченный заранее, не вычитается второй раз', () => {
+  const b = budget();
+  b.step('item_add', { type: 'bill', amount: 7000, name: 'Страховка', day: 25 });
+  const before = computePeriod(normalize(b.data), today);
+  const r = b.step('occ', { key: keyOf(b.data, 'Страховка') });
+  const after = computePeriod(normalize(r), today);
+  assert.equal(after.now, before.now - 7000);
+  assert.equal(before.nextPeriod.dueSum, 12000, 'до отметки: страховка 7000 + кредит 5000 в следующем периоде');
+  assert.equal(after.nextPeriod.dueSum, 5000, 'после отметки страховки там нет');
+});
+
+test('план: статья без даты оплачивается одной кнопкой, баланс уменьшается, отмена возвращает', () => {
+  const b = budget();
+  b.step('item_add', { type: 'bill', amount: 6000, name: 'Транспорт', spread: true });
+  const row = () => buildState(b.data, today, ctx).spreadPayments.find((x) => x.name === 'Транспорт');
+  const run = runAction(b.data, { ...today, ts: today.ts + 1000 }, ctx, 'spread_pay', { id: row().id });
+  const paid = buildState(run.data, today, ctx);
+  assert.equal(paid.cardBalance, 24000);
+  assert.equal(paid.spreadPayments[0].remaining, 0);
+  assert.equal(paid.spreadPayments[0].planSpendId, run.result.spendId);
+  assert.throws(() => runAction(run.data, today, ctx, 'spread_pay', { id: row().id }), /Уже оплачено/);
+  const undone = runAction(run.data, today, ctx, 'delete', { id: run.result.spendId });
+  assert.equal(buildState(undone.data, today, ctx).cardBalance, 30000);
+});
+
+test('план: разовый пункт позже окна тоже можно отметить, повторная отметка запрещена', () => {
+  const b = budget();
+  b.step('item_add', { type: 'bill', amount: 900, name: 'Подарок', day: 10, once: '2026-12' });
+  const key = keyOf(b.data, 'Подарок');
+  const r = b.step('occ', { key });
+  assert.equal(r.balance.amount, 29100);
+  assert.throws(() => runAction(r, today, ctx, 'occ', { key }), /Уже учтено/);
+});
+
 // ---- бот: список «Оплаты»
 test('paidList: платёж можно отметить заранее, будущий доход — нет, отмеченное можно снять', () => {
   const b = budget();

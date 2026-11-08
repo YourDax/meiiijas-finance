@@ -144,4 +144,7 @@ body { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 
 /* Строка платежа: кнопка отметки справа */
 .item > button { flex: none; }
-.paybtn { min-height: 36px; }
+.paybtn, button.small.paybtn { min-height: 40px; white-space: nowrap; }
+/* Сумма над кнопкой: длинному названию остаётся место на узком экране */
+.payside { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.item .t { white-space: normal; overflow-wrap: anywhere; }

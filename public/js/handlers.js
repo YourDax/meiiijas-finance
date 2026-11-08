@@ -2,7 +2,7 @@
 import { S, store, api, act, hooks } from './state.js';
 import { $, esc, money, isoStr, dayKey, timeStr, dayLabel, catTitle, thisMonth, parseAmt, setInfo, haptic, toast, ask } from './util.js';
 import { closeSheet, sheet, val, field, buttons, btn, infoSheet } from './ui.js';
-import { whenText, render } from './tabs.js';
+import { whenText, render, curBalance } from './tabs.js';
 import { itemForm, bindItemForm, confirmSheet, leftoverSheet } from './forms.js';
 
 // ---------- действия ----------
@@ -21,8 +21,12 @@ export async function deleteSpendWithUndo(id) {
   });
 }
 
-// Деньги на карте сейчас (после последнего ответа сервера)
-const curBalance = () => (S.state.balance ? S.state.cardBalance : S.state.period.now);
+// Что стало с деньгами после отметки: показываем новый баланс
+function occToast(o) {
+  if (o.type === 'income') return `Получено +${money(o.amount)} · на карте ${money(curBalance())}`;
+  if (o.fromReserve && S.state.reserve) return `Оплачено из резерва · в резерве ${money(S.state.reserve.amount)}`;
+  return `Оплачено −${money(o.amount)} · на карте ${money(curBalance())}`;
+}
 
 export const H = {
   close: () => closeSheet(),
@@ -83,8 +87,23 @@ export const H = {
         ${buttons(btn(`✅ Перевёл ${money(t.amount)}`, 'reserve-quick', { amount: t.amount }), btn('Другая сумма', 'reserve-deposit', {}, 'ghost'))}${r.leftover ? '' : buttons(btn('Позже', 'close', {}, 'ghost'))}`);
       S.confirm = r.leftover ?? null;
     } else if (r.leftover) leftoverSheet(r.leftover);
-    else toast(d.skip ? 'Отмечено: не было' : r.occ?.type === 'income' ? 'Доход отмечен' : 'Платёж отмечен оплаченным', false, { label: 'Отменить', run: () => act('occ_undo', { key: d.key }) });
+    else toast(d.skip ? 'Отмечено: не было' : occToast(r.occ), false, { label: 'Отменить', run: () => act('occ_undo', { key: d.key }) });
   },
+  // Дата пункта раньше заданного остатка: сумма считается уже учтённой, поэтому списываем только после подтверждения
+  'occ-auto'(d) {
+    const o = S.state.payments.find((x) => x.key === d.key);
+    if (!o) return;
+    const income = o.type === 'income';
+    sheet(`${o.name} · ${money(o.amount)}`, `<p>Дата этого ${income ? 'поступления' : 'платежа'} раньше, чем ты указал остаток, поэтому он считается уже учтённым.</p>
+      <p class="small muted">${income ? 'Если деньги ещё не приходили, а в остатке их нет, нажми кнопку, и сумма добавится.' : 'Если на самом деле ещё не платил, нажми кнопку, и сумма спишется.'}</p>
+      ${buttons(btn(income ? `✅ Добавить ${money(o.amount)}` : `✅ Списать ${money(o.amount)}`, 'occ-auto-do', { key: o.key }), btn('Уже учтено', 'close', {}, 'ghost'))}`);
+  },
+  async 'occ-auto-do'(d) { closeSheet(); await H.occ({ key: d.key }); },
+  async 'spread-pay'(d) {
+    const r = await act('spread_pay', { id: d.id });
+    if (r) toast(`Оплачено −${money(r.amount)} · на карте ${money(curBalance())}`, false, { label: 'Отменить', run: () => act('delete', { id: r.spendId }) });
+  },
+  async 'spread-undo'(d) { if (await act('delete', { id: d.spend })) toast(`Оплата отменена · на карте ${money(curBalance())}`); },
   async 'reserve-quick'(d) { closeSheet(); await act('reserve_deposit', { amount: Number(d.amount) }); if (S.confirm?.goals) { const l = S.confirm; S.confirm = null; leftoverSheet(l); } },
   async 'goal-leftover'(d) { closeSheet(); await act('goal_save', { id: d.id, amount: Number(d.amount) }); },
 
@@ -119,7 +138,7 @@ export const H = {
   },
   async 'occ-undo'(d) {
     const r = await act('occ_undo', { key: d.key });
-    if (r) toast(`Отметка снята: ${r.name}`);
+    if (r) toast(`Отменено: ${r.name} · на карте ${money(curBalance())}`);
   },
   'goto-plan'() { closeSheet(); S.tab = 'plan'; render(); scrollTo(0, 0); },
   async 'topup-undo'(d) { if (await ask('Отменить это пополнение?')) await act('topup_undo', { id: d.id }); },
