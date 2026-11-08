@@ -26,8 +26,7 @@ export function homeTab() {
         ${btn('Не было', 'occ', { key: o.key, skip: 1 }, 'ghost')}
       </div></div>`).join('');
   const gaps = p.gaps.map((g) => `<div class="card alert bad small">⚠️ Перед «${esc(g.name)}» (${isoStr(g.date)}) не хватит <b>${money(g.short)}</b></div>`).join('');
-  const due = p.dueList.length ? `<h2>Ближайшие платежи · ${money(p.dueSum)}</h2><div class="list">${p.dueList.map((o) => `
-    <div class="item" data-act="item-edit" data-id="${esc(o.key.split(':')[0])}"><div class="ico">📌</div><div class="grow"><div class="t">${esc(o.name)}</div><div class="s">${isoStr(o.date)}</div></div><div class="amt">${money(o.amount)}</div></div>`).join('')}</div>` : '';
+  const due = p.dueList.length ? `<h2>Ближайшие платежи · ${money(p.dueSum)}</h2><div class="list">${p.dueList.map((o) => payRow(s.payments?.find((x) => x.key === o.key) ?? { ...o, status: 'open', past: true })).join('')}</div>` : '';
   const cats = Object.entries(p.byCatPeriod).sort((a, b) => b[1] - a[1]);
   const total = cats.reduce((x, [, v]) => x + v, 0) || 1;
   const catBlock = cats.length ? `<h2>Траты периода · ${money(p.spentPeriod)}</h2><div class="card">${cats.map(([k, v]) => `
@@ -61,7 +60,7 @@ export function homeTab() {
       <div class="row gap" style="margin-top:8px">${btn('🧾 Записать трату', 'quick-spend', {}, 'grow')}${btn('↩️', 'undo-last', {}, 'ghost')}</div>
     </div>
     <div class="row gap wrap" style="margin-bottom:10px">
-      ${btn('💼 Остаток', 'balance', {}, 'ghost small')}${btn('💵 Пополнить', 'topup', {}, 'ghost small')}
+      ${btn('💼 Баланс', 'balance', {}, 'ghost small')}${btn('➕ Пополнить', 'topup', {}, 'ghost small')}${btn('➖ Снять', 'withdraw', {}, 'ghost small')}
       ${btn('➕ Доход/платёж', 'item-add', {}, 'ghost small')}${btn('💬 Фразой', 'nl', {}, 'ghost small')}
     </div>
     ${due}${catBlock}${dynamicsBlock()}
@@ -74,7 +73,30 @@ export function homeTab() {
     </div>`;
 }
 
-export // Сколько потрачено на этой неделе и в этом месяце против прошлых, и 14 дней столбиками
+export // Строка платежа или дохода с кнопкой отметки: оплатить можно в любой момент, ошибочную отметку — снять
+const PAY_ICO = { open: '⏳', done: '✅', skipped: '⏭', auto: '✔️' };
+function payAction(o) {
+  if (o.status === 'open') {
+    if (o.type === 'income' && !o.past) return '<span class="tag">ждём</span>';
+    return btn(o.type === 'income' ? '✅ Пришло' : '✅ Оплачено', 'occ', { key: o.key }, 'small paybtn');
+  }
+  if (o.status === 'done' || o.status === 'skipped') return btn('↩️ Снять', 'occ-undo', { key: o.key }, 'ghost small');
+  return '<span class="tag">в остатке</span>';
+}
+function payRow(o) {
+  const note = o.status === 'skipped' ? ' · не было' : o.status === 'done' ? ' · отмечено' : '';
+  return `<div class="item" data-act="item-edit" data-id="${esc(o.id)}"><div class="ico">${PAY_ICO[o.status]}</div><div class="grow"><div class="t">${esc(o.name)}</div><div class="s">${isoStr(o.date)}${note}</div></div>
+    <div class="amt ${o.type === 'income' ? 'pos' : ''}">${o.type === 'income' ? '+' : ''}${money(o.amount)}</div>${payAction(o)}</div>`;
+}
+function paymentsBlock() {
+  const list = S.state.payments ?? [];
+  if (!list.length) return '';
+  const open = list.filter((o) => o.status === 'open').length;
+  return `<h2>Оплаты и поступления${open ? ` · ждут отметки: ${open}` : ''}</h2><div class="list">${list.map(payRow).join('')}</div>
+    <p class="small muted">Платёж можно отметить оплаченным заранее. Отметил по ошибке — нажми «↩️ Снять», деньги вернутся.</p>`;
+}
+
+// Сколько потрачено на этой неделе и в этом месяце против прошлых, и 14 дней столбиками
 function dynamicsBlock() {
   const s = S.state;
   if (s.spends.length < 3) return '';
@@ -94,8 +116,8 @@ function spendsTab() {
   const months = [...new Set(s.spends.map((x) => dayKey(x.ts).slice(0, 7)))];
   const cur = thisMonth();
   if (!months.includes(cur)) months.unshift(cur);
-  const topups = s.topups.length ? `<h2>Пополнения</h2><div class="list">${s.topups.map((t) => `
-    <div class="item" style="cursor:default"><div class="ico">💵</div><div class="grow"><div class="t">${esc(t.name)}</div><div class="s">${dayLabel(dayKey(t.ts))}${t.by ? ` · ${esc(t.by)}` : ''}</div></div><div class="amt pos">+${money(t.amount)}</div>
+  const topups = s.topups.length ? `<h2>Пополнения и снятия</h2><div class="list">${s.topups.map((t) => `
+    <div class="item" style="cursor:default"><div class="ico">💵</div><div class="grow"><div class="t">${esc(t.name)}</div><div class="s">${dayLabel(dayKey(t.ts))}${t.by ? ` · ${esc(t.by)}` : ''}</div></div><div class="amt ${t.amount < 0 ? '' : 'pos'}">${t.amount < 0 ? '−' : '+'}${money(Math.abs(t.amount))}</div>
     ${btn('↩️', 'topup-undo', { id: t.id }, 'ghost small')}</div>`).join('')}</div>` : '';
   return `
     <div class="row between"><h1>Траты</h1><div class="row gap">${btn('⬇️ CSV', 'export-csv', {}, 'ghost small')}${btn('➕ Трата', 'spend-add', {}, 'small')}</div></div>
@@ -138,6 +160,7 @@ export function planTab() {
     <div class="card"><div class="row between"><span class="muted">Доходы в месяц</span><b class="pos">${money(s.plan.totalIncome)}</b></div>
       <div class="row between"><span class="muted">Обязательные</span><b>${money(s.plan.totalBills)}</b></div>
       <div class="row between"><span class="muted">Свободно</span><b class="${s.plan.free < 0 ? 'neg' : ''}">${money(s.plan.free)}</b></div></div>
+    ${paymentsBlock()}
     ${sect('Доходы', by((i) => i.type === 'income' && !i.once))}
     ${sect('Платежи по датам', by((i) => i.type === 'bill' && !i.spread && !i.once))}
     ${sect('В течение месяца', by((i) => i.spread))}

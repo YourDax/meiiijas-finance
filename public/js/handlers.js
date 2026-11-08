@@ -21,6 +21,9 @@ export async function deleteSpendWithUndo(id) {
   });
 }
 
+// Деньги на карте сейчас (после последнего ответа сервера)
+const curBalance = () => (S.state.balance ? S.state.cardBalance : S.state.period.now);
+
 export const H = {
   close: () => closeSheet(),
 
@@ -49,6 +52,8 @@ export const H = {
       ${row('💬', 'Фразой', '«кофе 450», «аванс 80к 5 числа»', 'nl')}
       ${row('💰', 'Доход или платёж', 'регулярный или разовый', 'item-add')}
       ${row('💵', 'Пополнить баланс', 'подарок, возврат, подработка', 'topup')}
+      ${row('➖', 'Снять с баланса', 'наличные, перевод — не трата', 'withdraw')}
+      ${row('✅', 'Отметить оплату', 'платёж оплачен или доход пришёл', 'goto-plan')}
       ${row('🎯', 'Цель накоплений', 'сумма и срок', 'goal-add')}
       ${row('📥', 'Импорт выписки', 'PDF из Т-Банка', 'import')}
     </div>`);
@@ -78,12 +83,14 @@ export const H = {
         ${buttons(btn(`✅ Перевёл ${money(t.amount)}`, 'reserve-quick', { amount: t.amount }), btn('Другая сумма', 'reserve-deposit', {}, 'ghost'))}${r.leftover ? '' : buttons(btn('Позже', 'close', {}, 'ghost'))}`);
       S.confirm = r.leftover ?? null;
     } else if (r.leftover) leftoverSheet(r.leftover);
+    else toast(d.skip ? 'Отмечено: не было' : r.occ?.type === 'income' ? 'Доход отмечен' : 'Платёж отмечен оплаченным', false, { label: 'Отменить', run: () => act('occ_undo', { key: d.key }) });
   },
   async 'reserve-quick'(d) { closeSheet(); await act('reserve_deposit', { amount: Number(d.amount) }); if (S.confirm?.goals) { const l = S.confirm; S.confirm = null; leftoverSheet(l); } },
   async 'goal-leftover'(d) { closeSheet(); await act('goal_save', { id: d.id, amount: Number(d.amount) }); },
 
   balance() {
-    sheet('Остаток на руках', `<p class="small muted">Сколько денег на карте прямо сейчас. От этого зависит дневной лимит.</p>${field('amount', 'Сумма', `inputmode="decimal" value="${S.state.balance ? S.state.cardBalance : ''}" placeholder="12000"`)}${buttons(btn('Сохранить', 'balance-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+    const cur = S.state.balance ? S.state.cardBalance : S.state.period.now;
+    sheet('Баланс на руках', `<p>Сейчас на карте: <b>${money(cur)}</b></p><p class="small muted">Введи сумму: добавить к балансу, снять с него или задать точный остаток. От остатка зависит дневной лимит.</p>${field('amount', 'Сумма', 'inputmode="decimal" placeholder="5000 или 5к" data-enter="topup-save"')}${field('name', 'Откуда или на что (необязательно)', 'maxlength="40" placeholder="Подарок, наличные…"')}${buttons(btn('➕ Добавить', 'topup-save'), btn('➖ Снять', 'withdraw-save'))}${buttons(btn('= Это мой точный остаток', 'balance-save', {}, 'ghost'))}`);
   },
   async 'balance-save'() {
     const raw = val('amount').trim();
@@ -97,8 +104,24 @@ export const H = {
   async 'topup-save'() {
     const amount = parseAmt(val('amount'));
     if (!amount) return toast('Введи сумму', true);
-    if (await act('topup', { amount, name: val('name') })) closeSheet();
+    const r = await act('topup', { amount, name: val('name') });
+    if (r) { closeSheet(); toast(`Добавлено ${money(amount)} · на карте ${money(curBalance())}`, false, { label: 'Отменить', run: () => act('topup_undo', { id: r.id }) }); }
   },
+  withdraw() {
+    const cur = S.state.balance ? S.state.cardBalance : S.state.period.now;
+    sheet('Снять с баланса', `<p>Сейчас на карте: <b>${money(cur)}</b></p><p class="small muted">Наличные, перевод, возврат долга. Это не трата: на дневной лимит и категории не влияет, только уменьшает баланс.</p>${field('amount', 'Сумма', 'inputmode="decimal" placeholder="3000 или 3к" data-enter="withdraw-save"')}${field('name', 'На что (необязательно)', 'maxlength="40" placeholder="Наличные"')}${buttons(btn('➖ Снять', 'withdraw-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+  },
+  async 'withdraw-save'() {
+    const amount = parseAmt(val('amount'));
+    if (!amount) return toast('Введи сумму', true);
+    const r = await act('withdraw', { amount, name: val('name') });
+    if (r) { closeSheet(); toast(`Снято ${money(amount)} · на карте ${money(curBalance())}`, false, { label: 'Отменить', run: () => act('topup_undo', { id: r.id }) }); }
+  },
+  async 'occ-undo'(d) {
+    const r = await act('occ_undo', { key: d.key });
+    if (r) toast(`Отметка снята: ${r.name}`);
+  },
+  'goto-plan'() { closeSheet(); S.tab = 'plan'; render(); scrollTo(0, 0); },
   async 'topup-undo'(d) { if (await ask('Отменить это пополнение?')) await act('topup_undo', { id: d.id }); },
 
   'spend-add'() {

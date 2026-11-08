@@ -141,3 +141,7 @@ body { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 #tabs { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 #fab { right: max(16px, env(safe-area-inset-right)); }
 #toast[hidden] { display: none; }
+
+/* Строка платежа: кнопка отметки справа */
+.item > button { flex: none; }
+.paybtn { min-height: 36px; }
