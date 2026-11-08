@@ -11,7 +11,7 @@
 - Новые файлы: `lib/paid.js` (список для бота и состояния), `test/paid.test.js`. Правки: `lib/period.js` (`unconfirmOccurrence`, `statusOf`), `lib/ops.js` (`unconfirmOcc`), `lib/bot.js` (`applyWithdraw`), `lib/nlp.js`, `lib/app.js`, `public/js/tabs.js`, `public/js/handlers.js`.
 
 **Состояние**
-- Ветка `feat/mark-paid-balance`. Тесты: 158 из 158 (`npm test`).
+- Влито в `main` (коммит 74954f2) и задеплоено в production автоматически через привязку Git в Vercel (деплой READY, вебхук без секрета отвечает 401). Тесты: 158 из 158 (`npm test`).
 - Вёрстку проверял в браузере на поддельном Telegram, в настоящем Telegram не проверял.
 
 **Открыто**
@@ -33,5 +33,5 @@
 
 - Код: Node.js (ESM), хостинг Vercel (проект `meiiijas-finance-bot`), данные в Upstash Redis, тесты `npm test`.
 - Работать в отдельных ветках `feat/...`; пуш в `main` и production-деплой только с явного разрешения пользователя.
-- Деплой: Git в Vercel привязан к GitHub (2026-11-09), пуш в `main` должен деплоиться сам. Если нет — `create_deployment` с `gitSource`.
+- Деплой: Git в Vercel привязан к GitHub (2026-11-09), пуш в `main` деплоится в production сам (проверено 2026-11-09). Если перестанет — `create_deployment` с `gitSource`.
 - Значения `BOT_TOKEN`, `WEBHOOK_SECRET`, `CRON_SECRET`, токены Redis не читать и не выводить.
