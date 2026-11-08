@@ -1,6 +1,6 @@
 // Формы пунктов плана, карточки подтверждения, остаток прошлого периода.
 import { S } from './state.js';
-import { $, esc, money, ymGen, thisMonth } from './util.js';
+import { $, esc, money, ymGen, thisMonth, MONTHS_NOM } from './util.js';
 import { sheet, field, buttons, btn } from './ui.js';
 import { whenText } from './tabs.js';
 
@@ -11,10 +11,12 @@ export function itemForm(it) {
     ${it ? '' : `<label for="f-type">Что это</label><select id="f-type"><option value="income">💰 Доход</option><option value="bill" selected>📌 Обязательный платёж</option></select>`}
     ${field('name', 'Название', `value="${esc(it?.name ?? '')}" maxlength="60" placeholder="Аренда, Зарплата…"`)}
     ${field('amount', 'Сумма', `inputmode="decimal" value="${it ? it.amount : ''}" placeholder="25000 или 25к"`)}
-    ${it ? '' : `<label for="f-sched">Когда</label><select id="f-sched"><option value="monthly">Каждый месяц, в определённое число</option><option value="spread" id="o-spread">В течение месяца (без даты)</option><option value="once">Один раз</option></select>
+    ${it ? '' : `<label for="f-sched">Когда</label><select id="f-sched"><option value="monthly">Каждый месяц, в определённое число</option><option value="spread" id="o-spread">В течение месяца (без даты)</option><option value="week">Каждую неделю</option><option value="quarter">Раз в квартал</option><option value="year">Раз в год</option><option value="once">Один раз</option></select>
+      <div id="w-weekday" hidden><label for="f-weekday">День недели</label><select id="f-weekday">${['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'].map((d, i) => `<option value="${i}">${d}</option>`).join('')}</select></div>
+      <div id="w-month" hidden><label for="f-month">Месяц первого платежа</label><select id="f-month">${MONTHS_NOM.map((m, i) => `<option value="${i}" ${i === S.state.today.m ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
       <div id="w-day">${field('day', 'Число месяца', 'inputmode="numeric" placeholder="1–31"')}</div>
       <div id="w-once" hidden><label for="f-once">Месяц</label><input id="f-once" type="month" value="${thisMonth()}"></div>`}
-    ${it ? `<label for="f-when">Когда (число, «в течение месяца», «в ноябре»)</label><input id="f-when" value="${esc(whenText(it).replace(/^Каждый месяц · /, ''))}">` : ''}
+    ${it?.every ? `<p class="small muted">Когда: ${esc(whenText(it))}. Чтобы сменить повтор, удали пункт и добавь заново.</p>` : it ? `<label for="f-when">Когда (число, «в течение месяца», «в ноябре»)</label><input id="f-when" value="${esc(whenText(it).replace(/^Каждый месяц · /, ''))}">` : ''}
     ${it?.spread ? `<label for="f-cat">Категория</label><select id="f-cat">${Object.entries(S.state.cats).map(([k, c]) => `<option value="${k}" ${it.cat === k ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>` : ''}
     ${spreadable ? '' : ''}`;
 }
@@ -26,7 +28,9 @@ export function bindItemForm(sh) {
     const isIncome = type.value === 'income';
     $('#o-spread', sh).disabled = isIncome;
     if (isIncome && sched.value === 'spread') sched.value = 'monthly';
-    $('#w-day', sh).hidden = sched.value === 'spread';
+    $('#w-day', sh).hidden = sched.value === 'spread' || sched.value === 'week';
+    $('#w-weekday', sh).hidden = sched.value !== 'week';
+    $('#w-month', sh).hidden = sched.value !== 'quarter' && sched.value !== 'year';
     $('#w-once', sh).hidden = sched.value !== 'once';
   };
   type.addEventListener('change', sync); sched.addEventListener('change', sync); sync();

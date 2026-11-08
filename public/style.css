@@ -148,3 +148,9 @@ body { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 /* Сумма над кнопкой: длинному названию остаётся место на узком экране */
 .payside { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .item .t { white-space: normal; overflow-wrap: anywhere; }
+
+/* Подсказки и второстепенные кнопки */
+button.linkbtn { background: none; color: var(--link); min-height: 30px; padding: 2px 0; font-size: 13px; font-weight: 500; }
+button.q { min-height: 26px; width: 26px; height: 26px; padding: 0; border-radius: 50%; background: var(--bg2); color: var(--text); font-size: 13px; vertical-align: middle; margin-left: 4px; }
+.bar.over > i { background: var(--bad); }
+.wizard-step { font-size: 13px; color: var(--hint); margin-bottom: 4px; }

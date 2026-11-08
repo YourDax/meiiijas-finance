@@ -1,11 +1,11 @@
 // Вкладки: главная, траты, план, цели, резерв, ещё.
-import { S, api } from './state.js';
+import { S, api, store } from './state.js';
 import { $, tz, esc, money, isoStr, ymLabel, ymGen, dayKey, timeStr, dayLabel, catIcon, catTitle, thisMonth, recentNames, setInfo } from './util.js';
 import { btn } from './ui.js';
 import { compareSpends, matchesQuery } from '../stats.js';
 
 // ---------- вкладки ----------
-export const TABS = [['home', '🏠', 'Главная'], ['spends', '🧾', 'Траты'], ['plan', '📅', 'План'], ['goals', '🎯', 'Цели'], ['reserve', '🏦', 'Резерв'], ['more', '⚙️', 'Ещё']];
+export const TABS = [['home', '🏠', 'Главная'], ['spends', '🧾', 'Траты'], ['plan', '📅', 'План'], ['goals', '🎯', 'Цели'], ['reserve', '🏦', 'Счета'], ['more', '⚙️', 'Ещё']];
 
 // Деньги на карте сейчас (после последнего ответа сервера)
 export const curBalance = () => (S.state.balance ? S.state.cardBalance : S.state.period.now);
@@ -22,7 +22,7 @@ export function homeTab() {
   const left = p.leftToday;
   const pending = p.pending.map((o) => `
     <div class="card"><div class="row"><div class="ico mid">${o.type === 'income' ? '💰' : '📌'}</div>
-      <div class="grow"><b>${esc(o.name)}</b><div class="small muted">${isoStr(o.date)}${o.fromReserve ? ' · из резерва' : ''}</div></div>
+      <div class="grow"><b>${esc(o.name)}</b><div class="small muted">${isoStr(o.date)}${o.fromReserve ? ' · из копилки' : ''}</div></div>
       <b class="${o.type === 'income' ? 'pos' : ''}">${o.type === 'income' ? '+' : '−'}${money(o.amount)}</b></div>
       <div class="row gap" style="margin-top:10px">
         ${btn(o.type === 'income' ? '✅ Получено' : '✅ Оплачено', 'occ', { key: o.key }, 'grow')}
@@ -35,8 +35,7 @@ export function homeTab() {
   const catBlock = cats.length ? `<h2>Траты периода · ${money(p.spentPeriod)}</h2><div class="card">${cats.map(([k, v]) => `
     <div class="tap" data-act="cat-filter" data-cat="${esc(k)}" style="margin:2px -8px;padding:6px 8px"><div class="row between small"><span>${esc(catTitle(k))}</span><b>${money(v)} ›</b></div><div class="bar"><i style="width:${Math.round(v / total * 100)}%"></i></div></div>`).join('')}
     ${Object.keys(p.byUserPeriod).length > 1 ? `<div class="small muted" style="margin-top:8px">${Object.entries(p.byUserPeriod).map(([u, v]) => `${esc(u)}: ${money(v)}`).join(' · ')}</div>` : ''}</div>` : '';
-  const onboarding = !s.items.length && !p.hasBalance ? `<div class="card alert small"><b>С чего начать</b>
-    <div class="steps"><div data-act="balance" class="tap">1️⃣ Укажи остаток на карте ›</div><div data-act="item-add" class="tap">2️⃣ Добавь доход и обязательные платежи ›</div><div data-act="nl" class="tap">3️⃣ Записывай траты фразой: «кофе 450» ›</div></div></div>` : '';
+  const onboarding = !s.items.length && !p.hasBalance ? `<div class="card alert small"><b>Настроим бюджет за минуту</b><p>Три коротких шага: сколько денег сейчас, когда приходит доход и какие есть обязательные платежи.</p>${btn('Начать настройку', 'wizard', { step: 1 }, 'block')}</div>` : '';
   const names = recentNames();
   return `
     <div class="row between"><h1>Бюджет</h1>${budgetChip()}</div>
@@ -45,14 +44,14 @@ export function homeTab() {
     <div class="card hero tap" data-act="balance" aria-label="Изменить остаток">
       <div class="small muted">${lead}${p.hasBalance ? '' : ' · оценка'} <span class="hint-edit">✏️ изменить</span></div>
       <div class="mid">${money(p.now)}</div>
-      <div class="small muted" style="margin-top:14px">Сегодня ещё можно потратить</div>
+      <div class="small muted" style="margin-top:14px">Сегодня ещё можно потратить <button class="q" data-act="explain-limit" aria-label="Как считается эта сумма">?</button></div>
       <div class="big ${left <= 0 ? 'neg' : ''}">${money(left)}</div>
       <div class="small muted">из ${money(p.dayBudget)} в день · потрачено ${money(p.spentToday)}</div>
       <div class="stats">
-        <div class="stat"><span class="small muted">За период</span><b>${money(p.pool)}</b></div>
-        <div class="stat"><span class="small muted">${p.noIncome ? 'До конца месяца' : 'До дохода'}</span><b>${p.days} дн.</b>${p.nextIncome ? `<span class="small muted">${esc(p.nextIncome.name)}, ${isoStr(p.nextIncome.date)}</span>` : ''}</div>
-        <div class="stat"><span class="small muted">В неделю</span><b>${money(p.perWeek)}</b></div>
-        <div class="stat"><span class="small muted">Платежи до дохода</span><b>${money(p.dueSum)}</b></div>
+        <div class="stat"><span class="small muted">Можно потратить ${p.noIncome ? 'до конца месяца' : 'до зарплаты'}</span><b>${money(p.pool)}</b></div>
+        <div class="stat"><span class="small muted">${p.noIncome ? 'Дней до конца месяца' : 'Дней до зарплаты'}</span><b>${p.days} дн.</b>${p.nextIncome ? `<span class="small muted">${esc(p.nextIncome.name)}, ${isoStr(p.nextIncome.date)}</span>` : ''}</div>
+        <div class="stat"><span class="small muted">Можно в неделю</span><b>${money(p.perWeek)}</b></div>
+        <div class="stat"><span class="small muted">Платежи до зарплаты</span><b>${money(p.dueSum)}</b></div>
       </div>
       ${p.hasBalance ? '' : `<div class="small warn" style="margin-top:10px">Задай точный остаток — расчёты станут точнее.</div>`}
     </div>
@@ -60,39 +59,29 @@ export function homeTab() {
     <div class="card">
       <div class="row gap"><input id="q-amt" data-enter="quick-spend" inputmode="decimal" placeholder="Сумма" style="width:34%"><input id="q-name" data-enter="quick-spend" placeholder="На что (кофе, такси…)" class="grow"></div>
       ${names.length ? `<div class="chips">${names.map((n) => `<button class="chip" data-act="chip" data-name="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
-      <div class="row gap" style="margin-top:8px">${btn('🧾 Записать трату', 'quick-spend', {}, 'grow')}${btn('↩️', 'undo-last', {}, 'ghost')}</div>
+      <div style="margin-top:8px">${btn('🧾 Записать трату', 'quick-spend', {}, 'block')}</div>
+      <div class="center">${btn('↩️ Отменить последнюю трату', 'undo-last', {}, 'linkbtn')}</div>
     </div>
-    <div class="row gap wrap" style="margin-bottom:10px">
-      ${btn('💼 Баланс', 'balance', {}, 'ghost small')}${btn('➕ Пополнить', 'topup', {}, 'ghost small')}${btn('➖ Снять', 'withdraw', {}, 'ghost small')}
-      ${btn('➕ Доход/платёж', 'item-add', {}, 'ghost small')}${btn('💬 Фразой', 'nl', {}, 'ghost small')}
-    </div>
-    ${due}${catBlock}${dynamicsBlock()}
-    <h2>Подробнее</h2>
-    <div class="row gap wrap">
-      ${btn('📋 План подробно', 'view', { name: 'plan', title: 'План подробно' }, 'ghost small')}
-      ${btn('🗓 Прогноз', 'forecast', { k: 1 }, 'ghost small')}
-      ${btn('📈 Графики', 'view', { name: 'chart', title: 'Графики трат' }, 'ghost small')}
-      ${btn('☀️ Дайджест', 'view', { name: 'digest', title: 'Дайджест' }, 'ghost small')}
-    </div>`;
+    ${due}${catBlock}${dynamicsBlock()}`;
 }
 
 export // Строка платежа или дохода с кнопкой отметки: оплатить можно в любой момент, ошибочную отметку — снять
 const PAY_ICO = { open: '⏳', done: '✅', skipped: '⏭', auto: '✔️' };
 function payAction(o) {
   const label = o.type === 'income' ? '✅ Получено' : '✅ Оплачено';
-  if (o.status === 'open') return btn(label, 'occ', { key: o.key }, 'small paybtn');
+  if (o.status === 'open') return `${btn(label, 'occ', { key: o.key }, 'small paybtn')}${btn('другая сумма', 'occ-amount', { key: o.key }, 'linkbtn')}`;
   if (o.status === 'done' || o.status === 'skipped') return btn('↩️ Отменить', 'occ-undo', { key: o.key }, 'ghost small paybtn');
   return btn(label, 'occ-auto', { key: o.key }, 'ghost small paybtn'); // дата раньше заданного остатка: спросим, прежде чем менять баланс
 }
 function payRow(o) {
   const note = o.status === 'skipped' ? ' · не было' : o.status === 'done' ? ' · отмечено' : o.status === 'auto' ? ' · уже в остатке' : '';
-  const reserve = o.fromReserve && S.state.reserve ? ' · из резерва' : '';
+  const reserve = o.fromReserve && S.state.reserve ? ' · из копилки' : '';
   return `<div class="item" data-act="item-edit" data-id="${esc(o.id)}"><div class="ico">${PAY_ICO[o.status]}</div><div class="grow"><div class="t">${esc(o.name)}</div><div class="s">${isoStr(o.date)}${reserve}${note}</div></div>
     <div class="payside"><div class="amt ${o.type === 'income' ? 'pos' : ''}">${o.type === 'income' ? '+' : '−'}${money(o.amount)}</div>${payAction(o)}</div></div>`;
 }
 function spreadRow(s) {
   const paid = s.remaining <= 0;
-  const action = !paid ? btn('✅ Оплачено', 'spread-pay', { id: s.id }, 'small paybtn')
+  const action = !paid ? `${btn('✅ Оплачено', 'spread-pay', { id: s.id }, 'small paybtn')}${btn('другая сумма', 'spread-amount', { id: s.id }, 'linkbtn')}`
     : s.planSpendId ? btn('↩️ Отменить', 'spread-undo', { spend: s.planSpendId }, 'ghost small paybtn') : '<span class="tag">потрачено</span>';
   return `<div class="item" data-act="item-edit" data-id="${esc(s.id)}"><div class="ico">${paid ? '✅' : catIcon(s.cat)}</div><div class="grow"><div class="t">${esc(s.name)}</div><div class="s">В течение месяца${s.spent > 0 ? ` · потрачено ${money(s.spent)} из ${money(s.amount)}` : ''}</div></div>
     <div class="payside"><div class="amt">−${money(paid ? s.amount : s.remaining)}</div>${action}</div></div>`;
@@ -142,7 +131,13 @@ function spendsTab() {
       ${months.map((m) => `<option value="${m}" ${(S.filter.month === 'cur' ? cur : S.filter.month) === m ? 'selected' : ''}>${ymLabel(m)}</option>`).join('')}
       <option value="all" ${S.filter.month === 'all' ? 'selected' : ''}>За всё время</option></select>
       <input id="flt-q" data-input="flt-q" placeholder="Поиск" value="${esc(S.filter.q)}" class="grow"></div>
-    <div id="spend-list">${spendList()}</div>${topups}`;
+    ${limitsBlock()}<div id="spend-list">${spendList()}</div>${topups}`;
+}
+
+function limitsBlock() {
+  const list = S.state.catLimits ?? [];
+  if (!list.length) return '';
+  return `<h2>Лимиты на месяц</h2><div class="card">${list.map((l) => { const over = l.spent > l.limit; return `<div class="tap" data-act="cat-limit-edit" data-cat="${esc(l.cat)}" style="margin:2px 0 8px"><div class="row between small"><span>${esc(catTitle(l.cat))}</span><b class="${over ? 'neg' : ''}">${money(l.spent)} из ${money(l.limit)}</b></div><div class="bar ${over ? 'over' : ''}"><i style="width:${Math.min(100, Math.round(l.spent / l.limit * 100))}%"></i></div></div>`; }).join('')}</div>`;
 }
 
 export function spendList() {
@@ -151,25 +146,26 @@ export function spendList() {
   const q = S.filter.q.trim().toLowerCase();
   const rows = s.spends.filter((x) => (month === 'all' || dayKey(x.ts).startsWith(month))
     && matchesQuery(x, q, { catTitle, dayLabel, dayKey }));
-  if (!rows.length) return `<div class="center pad"><p class="muted">${q || month !== 'all' ? 'Трат не найдено' : 'Пока нет трат'}</p>${btn('🧾 Записать трату', 'spend-add', {}, '')}</div>`;
+  if (!rows.length) return `<div class="center pad"><p class="muted">${q ? 'По такому запросу ничего нет' : 'В этом месяце трат пока нет. Запиши первую, например «кофе 450»'}</p>${btn('🧾 Записать трату', 'spend-add', {}, '')}</div>`;
   const sum = rows.reduce((a, x) => a + x.amount, 0);
   const groups = new Map();
   for (const x of rows) { const k = dayKey(x.ts); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
   const note = s.spendsTotal > s.spends.length ? `<p class="small muted center">Показаны последние ${s.spends.length} из ${s.spendsTotal}</p>` : '';
-  return `<div class="card row between"><span class="muted">Итого</span><b>${money(sum)}</b></div>
+  const swipeHint = store.get('swipe-hint') ? '' : `<div class="card small row between"><span>Смахни трату влево, чтобы удалить, или вправо, чтобы изменить. Можно и просто нажать на неё.</span>${btn('Понятно', 'swipe-ok', {}, 'ghost small')}</div>`;
+  return `${swipeHint}<div class="card row between"><span class="muted">Итого</span><b>${money(sum)}</b></div>
     ${[...groups].map(([k, list]) => `<h2>${dayLabel(k)} · ${money(list.reduce((a, x) => a + x.amount, 0))}</h2><div class="list">${list.map((x) => `
       <div class="swipe"><div class="sw sw-l">✏️ Изменить</div><div class="sw sw-r">🗑 Удалить</div><div class="item" data-act="spend-edit" data-swipe data-id="${esc(x.id)}"><div class="ico">${catIcon(x.cat)}</div>
         <div class="grow"><div class="t">${esc(x.name || catTitle(x.cat))}</div><div class="s">${timeStr(x.ts)}${x.by ? ` · ${esc(x.by)}` : ''}${x.src === 'bank' ? ' · из выписки' : ''}</div></div>
         <div class="amt">${money(x.amount)}</div></div></div>`).join('')}</div>`).join('')}${note}`;
 }
 
-export const whenText = (it) => it.spread ? 'В течение месяца' : it.once ? `Один раз · ${it.day}-го, ${ymLabel(it.once)}` : `Каждый месяц · ${it.day}-го`;
+export const whenText = (it) => it.everyLabel ? it.everyLabel[0].toUpperCase() + it.everyLabel.slice(1) : it.spread ? 'В течение месяца' : it.once ? `Один раз · ${it.day}-го, ${ymLabel(it.once)}` : `Каждый месяц · ${it.day}-го`;
 
 export function planTab() {
   const s = S.state;
   const sect = (title, list) => list.length ? `<h2>${title}</h2><div class="list">${list.map((it) => `
     <div class="item" data-act="item-edit" data-id="${esc(it.id)}"><div class="ico">${it.type === 'income' ? '💰' : it.spread ? catIcon(it.cat) : '📌'}</div>
-      <div class="grow"><div class="t">${esc(it.name)}</div><div class="s">${whenText(it)}${it.type === 'bill' && !it.spread && it.fromReserve ? ' · 🏠 из резерва' : ''}${it.by ? ` · ${esc(it.by)}` : ''}</div></div>
+      <div class="grow"><div class="t">${esc(it.name)}</div><div class="s">${whenText(it)}${it.type === 'bill' && !it.spread && it.fromReserve ? ' · 🏠 из копилки' : ''}${it.by ? ` · ${esc(it.by)}` : ''}</div></div>
       <div class="amt ${it.type === 'income' ? 'pos' : ''}">${money(it.amount)}</div></div>`).join('')}</div>` : '';
   // Пункты, у которых сейчас нечего отмечать: разовые из других месяцев
   const active = new Set([...(s.payments ?? []).map((o) => o.id), ...(s.spreadPayments ?? []).map((x) => x.id)]);
@@ -177,13 +173,13 @@ export function planTab() {
   return `
     <div class="row between"><h1>План</h1>${btn('➕ Добавить', 'item-add', {}, 'small')}</div>
     <div class="card"><div class="row between tap" data-act="balance"><span>${s.period.reserveOn ? '💳 На карте' : '💼 На руках'} <span class="small muted">✏️</span></span><b class="mid">${money(curBalance())}</b></div>
-      ${s.reserve ? `<div class="row between"><span class="muted">🏠 В резерве</span><b>${money(s.reserve.amount)}</b></div>` : ''}
+      ${s.reserve ? `<div class="row between"><span class="muted">🏠 В копилке</span><b>${money(s.reserve.amount)}</b></div>` : ''}
       <div class="row between" style="margin-top:8px"><span class="muted">Доходы в месяц</span><b class="pos">${money(s.plan.totalIncome)}</b></div>
       <div class="row between"><span class="muted">Обязательные</span><b>${money(s.plan.totalBills)}</b></div>
       <div class="row between"><span class="muted">Свободно</span><b class="${s.plan.free < 0 ? 'neg' : ''}">${money(s.plan.free)}</b></div></div>
     ${paymentsBlock()}
-    ${sect('Разовые в другие месяцы', other)}
-    ${s.items.length ? '' : '<p class="muted center pad">Пока пусто. Добавь доход и обязательные платежи.</p>'}
+    ${sect('Позже', other)}
+    ${s.items.length ? '' : `<div class="center pad"><p class="muted">Здесь будут зарплата, аренда, кредит и другие регулярные суммы.</p>${btn('➕ Добавить первый пункт', 'item-add')}</div>`}
     <div class="row gap wrap" style="margin-top:14px">
       ${btn('💬 Записать фразой', 'nl', {}, 'ghost small')}${btn('🗓 Прогноз', 'forecast', { k: 1 }, 'ghost small')}${btn('📋 Подробный план', 'view', { name: 'plan', title: 'План подробно' }, 'ghost small')}
     </div>`;
@@ -198,27 +194,48 @@ export function goalsTab() {
         <div class="bar ${st.done ? 'ok' : ''}" style="margin:10px 0 6px"><i style="width:${st.percent}%"></i></div>
         <div class="row between small"><span>${money(g.saved)} из ${money(g.target)}</span><b>${st.percent}%</b></div>
         ${st.done ? '' : `<div class="small muted">Откладывать по ${money(st.perMonth)} в месяц</div>`}
-        <div class="row gap" style="margin-top:10px">${btn('🐷 Отложить', 'goal-save', { id: g.id }, 'grow')}${btn('Удалить', 'goal-del', { id: g.id }, 'danger')}</div></div>`; }).join('')
-      : '<p class="muted center pad">Целей пока нет.<br>Например: «Отпуск», 200 000, июнь 2027.</p>'}
+        <div class="row gap wrap" style="margin-top:10px">${btn('🐷 Отложить', 'goal-save', { id: g.id }, 'grow')}${g.saved > 0 ? btn('Взять из цели', 'goal-out', { id: g.id }, 'ghost') : ''}${btn('✏️ Изменить', 'goal-edit', { id: g.id }, 'ghost')}</div></div>`; }).join('')
+      : `<div class="center pad"><p class="muted">Цель помогает копить: укажи сумму и срок, и приложение подскажет, сколько откладывать в месяц.</p>${btn('🎯 Создать первую цель', 'goal-add')}</div>`}
     <div class="row gap wrap">${btn('📋 Сводка по целям', 'view', { name: 'goals', title: 'Цели' }, 'ghost small')}</div>`;
+}
+
+function accountsBlock() {
+  const s = S.state;
+  const row = (ico, name, sub, amount, act_, data = {}) => `<div class="item" data-act="${act_}" ${Object.entries(data).map(([k, v]) => `data-${k}="${esc(v)}"`).join(' ')}><div class="ico">${ico}</div><div class="grow"><div class="t">${esc(name)}</div>${sub ? `<div class="s">${sub}</div>` : ''}</div><div class="amt">${money(amount)}</div></div>`;
+  return `<div class="row between"><h1>Счета</h1>${btn('🔁 Перевод', 'transfer', {}, 'small')}</div>
+    <div class="list">
+      ${row('💳', 'Карта', 'от неё считается лимит на день', curBalance(), 'balance')}
+      ${s.reserve ? row('🏠', 'Копилка на аренду', 'аренда, коммуналка, интернет', s.reserve.amount, 'reserve-set') : ''}
+      ${s.accounts.map((a) => row('💰', a.name, '', a.amount, 'account-edit', { id: a.id })).join('')}
+    </div>
+    <div class="row gap wrap" style="margin-bottom:10px">${btn('➕ Добавить счёт', 'account-add', {}, 'ghost small')}</div>
+    <p class="small muted">Наличные, вклад, другая карта. Деньги на этих счетах не входят в лимит на день. Перевод между счетами — не трата.</p>`;
+}
+
+function debtsBlock() {
+  const list = S.state.debts;
+  const row = (d) => { const open = d.left > 0; return `<div class="item" style="cursor:default"><div class="ico">${open ? (d.kind === 'owe' ? '🔻' : '💚') : '✅'}</div><div class="grow"><div class="t">${esc(d.name)}</div><div class="s">${d.kind === 'owe' ? 'я должен' : 'должны мне'}${d.left !== d.total ? ` · всего было ${money(d.total)}` : ''}</div></div>
+    <div class="payside"><div class="amt">${money(d.left)}</div>${open ? btn(d.kind === 'owe' ? 'Вернул' : 'Вернули', 'debt-pay', { id: d.id }, 'small paybtn') : btn('Удалить', 'debt-del', { id: d.id }, 'ghost small paybtn')}</div></div>`; };
+  return `<div class="row between"><h2>Долги</h2>${btn('➕ Долг', 'debt-add', {}, 'ghost small')}</div>
+    ${list.length ? `<div class="list">${list.map(row).join('')}</div>` : '<p class="small muted">Записывай, кому должен ты и кто должен тебе. Когда долг вернут, сумма сама изменит баланс.</p>'}`;
 }
 
 export function reserveTab() {
   const s = S.state; const r = s.reserve;
   const incomes = s.items.filter((i) => i.type === 'income' && !i.once);
-  if (!r) return `<h1>Резерв</h1><div class="card"><p>Резерв — отдельный счёт под аренду, коммуналку и интернет. Платежи из него не уменьшают остаток на карте.</p>
-    ${btn('🏠 Включить резерв', 'reserve-set', {}, 'block')}</div>
+  const head = accountsBlock() + debtsBlock();
+  if (!r) return `${head}<h2>Копилка на аренду</h2><div class="card"><p class="small">Отдельные деньги под аренду, коммуналку и интернет. Платежи из копилки не уменьшают деньги на карте, а приложение подсказывает, сколько отложить с дохода.</p>
+    ${btn('🏠 Включить копилку', 'reserve-set', {}, 'block')}</div>
     <h2>Транспорт</h2><div class="card"><p class="small muted">Формула: проездной + ставка за каждый рабочий день цикла (по производственному календарю).</p>${btn('🚌 Настроить транспорт', 'transport', {}, 'ghost block')}</div>`;
-  return `<h1>Резерв</h1>
-    <div class="card hero"><div class="small muted">Отложено на аренду и коммуналку</div><div class="big">${money(r.amount)}</div>
-      ${r.contract ? `<div class="small muted">Счёт: договор …${esc(r.contract)}</div>` : ''}
-      ${s.settings.reserveStep ? `<div class="small muted">Перевод округляется до ${money(s.settings.reserveStep)}</div>` : ''}</div>
-    <div class="row gap wrap" style="margin-bottom:10px">${btn('➕ Перевёл в резерв', 'reserve-deposit', {}, 'grow')}${btn('✏️ Остаток', 'reserve-set', {}, 'ghost')}</div>
+  return `${head}<h2>Копилка на аренду</h2>
+    ${r.contract ? `<div class="small muted">Счёт: договор …${esc(r.contract)}</div>` : ''}
+    ${s.settings.reserveStep ? `<div class="small muted" style="margin-bottom:8px">Перевод округляется до ${money(s.settings.reserveStep)}</div>` : ''}
+    <div class="row gap wrap" style="margin-bottom:10px">${btn('➕ Перевёл в копилку', 'reserve-deposit', {}, 'grow')}${btn('✏️ Изменить остаток', 'reserve-set', {}, 'ghost')}</div>
     <div class="info card" data-view="reserve"></div>
-    ${incomes.length ? `<h2>Сколько переводить с дохода</h2><div class="list">${incomes.map((i) => `
+    ${incomes.length ? `<h2>Сколько откладывать с дохода</h2><div class="list">${incomes.map((i) => `
       <div class="item" data-act="reserve-plan" data-id="${esc(i.id)}"><div class="ico">💰</div><div class="grow"><div class="t">${esc(i.name)}</div><div class="s">${i.toReserve ? 'задано вручную' : 'автоматически'}</div></div><div class="amt">${i.toReserve ? money(i.toReserve) : 'авто'}</div></div>`).join('')}</div>` : ''}
-    <h2>Настройки</h2>
-    <div class="row gap wrap">${btn('🔢 Округление', 'reserve-step', {}, 'ghost small')}${btn('📄 Договор', 'reserve-contract', {}, 'ghost small')}${btn('🚌 Транспорт', 'transport', {}, 'ghost small')}${btn('Выключить резерв', 'reserve-off', {}, 'danger small')}</div>`;
+    <h2>Настройки копилки</h2>
+    <div class="row gap wrap">${btn('🔢 Округление', 'reserve-step', {}, 'ghost small')}${btn('📄 Договор', 'reserve-contract', {}, 'ghost small')}${btn('🚌 Транспорт', 'transport', {}, 'ghost small')}${btn('Выключить копилку', 'reserve-off', {}, 'danger small')}</div>`;
 }
 
 export function moreTab() {
@@ -226,25 +243,37 @@ export function moreTab() {
   const row = (ico, title, sub, act_, data = {}) => `<div class="item" data-act="${act_}" ${Object.entries(data).map(([k, v]) => `data-${k}="${esc(v)}"`).join(' ')}><div class="ico">${ico}</div><div class="grow"><div class="t">${title}</div>${sub ? `<div class="s">${sub}</div>` : ''}</div><span class="muted">›</span></div>`;
   return `<h1>Ещё</h1>
     ${S.chats.length > 1 ? `<div class="list">${row('📒', 'Бюджет', esc(S.chats.find((c) => c.id === S.chatId)?.title ?? ''), 'chats')}</div>` : ''}
-    <h2>Данные</h2><div class="list">
-      ${row('📥', 'Импорт выписки Т-Банка', 'PDF «Справка о движении средств»', 'import')}
+    <h2>Отчёты</h2><div class="list">
+      ${row('📊', 'Итоги месяца', 'сколько пришло, ушло и осталось', 'month', { k: 0 })}
       ${row('📈', 'Графики трат', 'по категориям, дням и людям', 'view', { name: 'chart', title: 'Графики трат' })}
-      ${row('🗓', 'Планирование вперёд', 'прогноз на следующие месяцы', 'forecast', { k: 1 })}
-      ${row('⬇️', 'Экспорт трат', 'файл CSV придёт в чат с ботом', 'export-csv')}
-      ${s.usage ? row('💾', 'Объём данных', `${Math.max(1, Math.round(s.usage.bytes / 1024))} КБ · ${s.usage.percent}% лимита${s.usage.warn ? ' — пора разгрузить' : ''}`, 'usage') : ''}
+      ${row('🗓', 'Прогноз на следующие месяцы', 'что и когда придётся платить', 'forecast', { k: 1 })}
+      ${row('📋', 'Подробный план', 'все суммы и расчёт до зарплаты', 'view', { name: 'plan', title: 'Подробный план' })}
+      ${row('☀️', 'Сводка на сегодня', 'то же, что в утреннем сообщении', 'view', { name: 'digest', title: 'Сводка на сегодня' })}
+    </div>
+    <h2>Настроить учёт</h2><div class="list">
+      ${row('🎚', 'Лимиты по категориям', s.catLimits.length ? `задано: ${s.catLimits.length}` : 'например, еда — 20 000 в месяц', 'cat-limits')}
+      ${row('🗂', 'Свои категории', 'добавить или удалить', 'cats')}
+      ${row('🧭', 'Пройти настройку заново', 'остаток, доход, платежи', 'wizard', { step: 1 })}
+      ${row('📋', 'Чего ещё не хватает', 'чек-лист: что внести', 'view', { name: 'guide', title: 'Чего ещё не хватает' })}
+    </div>
+    <h2>Данные</h2><div class="list">
+      ${row('📥', 'Загрузить выписку Т-Банка', 'PDF «Справка о движении средств»', 'import')}
+      ${row('⬇️', 'Выгрузить траты в файл', 'таблица CSV придёт в чат с ботом', 'export-csv')}
       ${row('🕘', 'История изменений', `${s.log.length ? s.log.length + ' последних записей' : 'пока пусто'}`, 'log')}
     </div>
-    <h2>Помощники</h2><div class="list">
-      ${row('🤖', 'Промт для ИИ', 'данные бюджета для ChatGPT или Claude', 'ai')}
-      ${row('📋', 'Что внести', 'чек-лист: чего ещё не хватает', 'view', { name: 'guide', title: 'Что внести' })}
-      ${row('⌨️', 'Команды бота', 'любая команда или фраза, как в чате', 'console')}
+    <h2>Настройки</h2><div class="list">
+      ${row('☀️', 'Сообщение каждое утро', s.settings.digest ? 'включено' : 'выключено', 'digest')}
+      ${row('📆', 'С какого числа считать месяц', s.settings.cycleAnchor ? `с ${s.settings.cycleAnchor}-го числа` : 'автоматически, от зарплаты', 'cycle')}
+    </div>
+    <h2>Помощь</h2><div class="list">
+      ${row('🤖', 'Спросить совет у ИИ', 'готовый текст с данными для ChatGPT или Claude', 'ai')}
       ${row('❓', 'Справка', '', 'view', { name: 'help', title: 'Справка' })}
     </div>
-    <h2>Настройки</h2><div class="list">
-      ${row('☀️', 'Утренний дайджест', s.settings.digest ? 'включён' : 'выключен', 'digest')}
-      ${row('📆', 'Цикл бюджета', s.settings.cycleAnchor ? `с ${s.settings.cycleAnchor}-го числа` : 'авто (по основному доходу)', 'cycle')}
+    <h2>Дополнительно</h2><div class="list">
+      ${row('⌨️', 'Команды бота', 'для тех, кто привык к командам', 'console')}
+      ${s.usage ? row('💾', 'Объём данных', `${Math.max(1, Math.round(s.usage.bytes / 1024))} КБ · ${s.usage.percent}% лимита${s.usage.warn ? ' — пора разгрузить' : ''}`, 'usage') : ''}
+      ${row('♻️', '<span class="neg">Стереть все данные</span>', 'бюджет этого чата будет очищен', 'reset')}
     </div>
-    <h2>Опасная зона</h2><div class="list">${row('♻️', '<span class="neg">Стереть все данные</span>', 'бюджет этого чата будет очищен', 'reset')}</div>
     <p class="small muted center">Изменения сразу видны в боте, а закреплённая сводка в чате обновляется сама.</p>`;
 }
 

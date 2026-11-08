@@ -138,6 +138,8 @@ async function boot() {
     return;
   }
   await load();
+  // Первый запуск: сразу предлагаем настройку, один раз
+  if (S.state && !S.state.items.length && !S.state.balance && !store.get('wizard')) H.wizard({ step: 1 });
 }
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.state && !$('#ov')) load(); });

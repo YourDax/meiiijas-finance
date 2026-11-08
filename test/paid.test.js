@@ -208,13 +208,13 @@ test('план: разовый пункт позже окна тоже можн�
 });
 
 // ---- бот: список «Оплаты»
-test('paidList: платёж можно отметить заранее, будущий доход — нет, отмеченное можно снять', () => {
+test('paidList: платёж и будущий доход можно отметить заранее, отмеченное можно снять', () => {
   const b = budget();
   const data = normalize(structuredClone(b.data));
   const first = paidList(data, today);
   const cbs = first.markup.inline_keyboard.flat().map((x) => x.callback_data);
   assert.ok(cbs.some((c) => /^cf:.+:L$/.test(c) && c.includes(keyOf(data, 'Кредит'))));
-  assert.equal(cbs.some((c) => c.includes(keyOf(data, 'Зарплата'))), false, 'доход 20-го ещё не «пришёл»');
+  assert.ok(cbs.some((c) => c.includes(keyOf(data, 'Зарплата'))), 'доход можно отметить заранее');
   assert.match(first.text, /Кредит/);
   confirmOccurrence(data, keyOf(data, 'Кредит'), today);
   const second = paidList(data, today).markup.inline_keyboard.flat().map((x) => x.callback_data);

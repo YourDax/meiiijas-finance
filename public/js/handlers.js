@@ -1,6 +1,7 @@
 // Обработчики действий (data-act).
 import { S, store, api, act, hooks } from './state.js';
 import { $, esc, money, isoStr, dayKey, timeStr, dayLabel, catTitle, thisMonth, parseAmt, setInfo, haptic, toast, ask } from './util.js';
+import { renderExtras } from './extras.js';
 import { closeSheet, sheet, val, field, buttons, btn, infoSheet } from './ui.js';
 import { whenText, render, curBalance } from './tabs.js';
 import { itemForm, bindItemForm, confirmSheet, leftoverSheet } from './forms.js';
@@ -24,12 +25,20 @@ export async function deleteSpendWithUndo(id) {
 // Что стало с деньгами после отметки: показываем новый баланс
 function occToast(o) {
   if (o.type === 'income') return `Получено +${money(o.amount)} · на карте ${money(curBalance())}`;
-  if (o.fromReserve && S.state.reserve) return `Оплачено из резерва · в резерве ${money(S.state.reserve.amount)}`;
+  if (o.fromReserve && S.state.reserve) return `Оплачено из копилки · в копилке ${money(S.state.reserve.amount)}`;
   return `Оплачено −${money(o.amount)} · на карте ${money(curBalance())}`;
+}
+
+// Сообщение после записи траты: лимит важнее, затем предупреждение о дате
+function afterSpend(r, text) {
+  if (r.limit) toast(`${r.limit.name}: ${money(r.limit.spent)} из ${money(r.limit.limit)} за месяц`, r.limit.spent > r.limit.limit);
+  else if (r.beforeBalance) toast('Записано. Дата раньше указанного остатка, поэтому баланс не изменился');
+  else if (text) toast(text);
 }
 
 export const H = {
   close: () => closeSheet(),
+  ...renderExtras,
 
   'export-csv'() {
     sheet('Экспорт трат', `<p class="small muted">Файл придёт в личный чат с ботом. Открой его в Excel или Google Таблицах.</p>${buttons(btn('За этот месяц', 'export-run', { range: 'month' }), btn('За всё время', 'export-run', { range: 'all' }, 'ghost'))}`);
@@ -52,14 +61,15 @@ export const H = {
   'add-menu'() {
     const row = (ico, t, s, a) => `<div class="item" data-act="${a}"><div class="ico">${ico}</div><div class="grow"><div class="t">${t}</div><div class="s">${s}</div></div><span class="muted">›</span></div>`;
     sheet('Добавить', `<div class="list">
-      ${row('🧾', 'Трата', 'сумма, на что, категория', 'spend-add')}
-      ${row('💬', 'Фразой', '«кофе 450», «аванс 80к 5 числа»', 'nl')}
+      ${row('🧾', 'Трата', 'сумма, на что, дата, категория', 'spend-add')}
+      ${row('💬', 'Написать фразой', '«кофе 450», «аванс 80к 5 числа»', 'nl')}
       ${row('💰', 'Доход или платёж', 'регулярный или разовый', 'item-add')}
-      ${row('💵', 'Пополнить баланс', 'подарок, возврат, подработка', 'topup')}
-      ${row('➖', 'Снять с баланса', 'наличные, перевод — не трата', 'withdraw')}
+      ${row('💼', 'Изменить баланс', 'добавить, списать или указать точный остаток', 'balance')}
+      ${row('🔁', 'Перевод между счетами', 'с карты на наличные и обратно', 'transfer')}
+      ${row('🤝', 'Долг', 'кому должен ты или кто должен тебе', 'debt-add')}
       ${row('✅', 'Отметить оплату', 'платёж оплачен или доход пришёл', 'goto-plan')}
       ${row('🎯', 'Цель накоплений', 'сумма и срок', 'goal-add')}
-      ${row('📥', 'Импорт выписки', 'PDF из Т-Банка', 'import')}
+      ${row('📥', 'Загрузить выписку', 'PDF из Т-Банка', 'import')}
     </div>`);
   },
 
@@ -73,17 +83,17 @@ export const H = {
     const amount = parseAmt($('#q-amt').value);
     if (!amount) return toast('Введи сумму, например 450 или 1,5к', true);
     const r = await act('spend_add', { amount, name: $('#q-name').value.trim() });
-    if (r) toast(`Записано: ${money(amount)}`);
+    if (r) afterSpend(r, `Записано: ${money(amount)}`);
   },
   async 'undo-last'() { const r = await act('spend_undo'); if (r?.undone) toast(`Отменено: ${money(r.undone.amount)} ${r.undone.name ?? ''}`); },
 
   async occ(d) {
-    const r = await act('occ', { key: d.key, skip: !!d.skip });
+    const r = await act('occ', { key: d.key, skip: !!d.skip, amount: d.amount ? Number(d.amount) : undefined });
     if (!r) return;
     if (r.transfer) {
       const t = r.transfer;
-      sheet('🏠 Перевод в резерв', `<p><b>${esc(t.name)}</b> пришёл. Переведи на резерв <b>${money(t.amount)}</b>.</p>
-        <p class="small muted">К ${isoStr(t.deadline)} нужно ${money(t.need)}, в резерве ${money(t.have)}${t.later.length ? `. Остальное закроет доход: ${t.later.map((x) => `${isoStr(x.date)} +${money(x.amount)}`).join(', ')}` : ''}.</p>
+      sheet('🏠 Перевод в копилку', `<p><b>${esc(t.name)}</b> пришёл. Переведи в копилку <b>${money(t.amount)}</b>.</p>
+        <p class="small muted">К ${isoStr(t.deadline)} нужно ${money(t.need)}, в копилке ${money(t.have)}${t.later.length ? `. Остальное закроет доход: ${t.later.map((x) => `${isoStr(x.date)} +${money(x.amount)}`).join(', ')}` : ''}.</p>
         ${buttons(btn(`✅ Перевёл ${money(t.amount)}`, 'reserve-quick', { amount: t.amount }), btn('Другая сумма', 'reserve-deposit', {}, 'ghost'))}${r.leftover ? '' : buttons(btn('Позже', 'close', {}, 'ghost'))}`);
       S.confirm = r.leftover ?? null;
     } else if (r.leftover) leftoverSheet(r.leftover);
@@ -99,8 +109,33 @@ export const H = {
       ${buttons(btn(income ? `✅ Добавить ${money(o.amount)}` : `✅ Списать ${money(o.amount)}`, 'occ-auto-do', { key: o.key }), btn('Уже учтено', 'close', {}, 'ghost'))}`);
   },
   async 'occ-auto-do'(d) { closeSheet(); await H.occ({ key: d.key }); },
+  'occ-amount'(d) {
+    const o = S.state.payments.find((x) => x.key === d.key);
+    if (!o) return;
+    const income = o.type === 'income';
+    sheet(o.name, `<p class="small muted">По плану ${money(o.amount)}. Укажи, сколько ${income ? 'пришло' : 'заплатил'} на самом деле. Сумма в плане не изменится.</p>${field('amount', 'Сумма', `inputmode="decimal" value="${o.amount}"`)}<input type="hidden" id="f-key" value="${esc(o.key)}">${buttons(btn(income ? '✅ Получено' : '✅ Оплачено', 'occ-amount-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+  },
+  async 'occ-amount-save'() {
+    const amount = parseAmt(val('amount'));
+    if (!amount) return toast('Введи сумму', true);
+    const key = val('key');
+    closeSheet();
+    await H.occ({ key, amount });
+  },
+  'spread-amount'(d) {
+    const s = S.state.spreadPayments.find((x) => x.id === d.id);
+    if (!s) return;
+    sheet(s.name, `<p class="small muted">Осталось ${money(s.remaining)} из ${money(s.amount)}. Укажи, сколько заплатил сейчас.</p>${field('amount', 'Сумма', `inputmode="decimal" value="${s.remaining}"`)}<input type="hidden" id="f-id" value="${esc(s.id)}">${buttons(btn('✅ Оплачено', 'spread-amount-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+  },
+  async 'spread-amount-save'() {
+    const amount = parseAmt(val('amount'));
+    if (!amount) return toast('Введи сумму', true);
+    const id = val('id');
+    closeSheet();
+    await H['spread-pay']({ id, amount });
+  },
   async 'spread-pay'(d) {
-    const r = await act('spread_pay', { id: d.id });
+    const r = await act('spread_pay', { id: d.id, amount: d.amount ? Number(d.amount) : undefined });
     if (r) toast(`Оплачено −${money(r.amount)} · на карте ${money(curBalance())}`, false, { label: 'Отменить', run: () => act('delete', { id: r.spendId }) });
   },
   async 'spread-undo'(d) { if (await act('delete', { id: d.spend })) toast(`Оплата отменена · на карте ${money(curBalance())}`); },
@@ -108,8 +143,9 @@ export const H = {
   async 'goal-leftover'(d) { closeSheet(); await act('goal_save', { id: d.id, amount: Number(d.amount) }); },
 
   balance() {
-    const cur = S.state.balance ? S.state.cardBalance : S.state.period.now;
-    sheet('Баланс на руках', `<p>Сейчас на карте: <b>${money(cur)}</b></p><p class="small muted">Введи сумму: добавить к балансу, снять с него или задать точный остаток. От остатка зависит дневной лимит.</p>${field('amount', 'Сумма', 'inputmode="decimal" placeholder="5000 или 5к" data-enter="topup-save"')}${field('name', 'Откуда или на что (необязательно)', 'maxlength="40" placeholder="Подарок, наличные…"')}${buttons(btn('➕ Добавить', 'topup-save'), btn('➖ Снять', 'withdraw-save'))}${buttons(btn('= Это мой точный остаток', 'balance-save', {}, 'ghost'))}`);
+    sheet('Изменить баланс', `<p>Сейчас на карте: <b>${money(curBalance())}</b></p>${field('amount', 'Сумма', 'inputmode="decimal" placeholder="5000 или 5к" data-enter="topup-save"')}${field('name', 'Откуда или на что (необязательно)', 'maxlength="40" placeholder="Подарок, наличные…"')}
+      <p class="small muted">«Добавить» — подарок, возврат, подработка. «Списать» — деньги ушли, но это не трата: на лимит не влияет. «Точный остаток» — если сумма разошлась с банком.</p>
+      ${buttons(btn('➕ Добавить', 'topup-save'), btn('➖ Списать', 'withdraw-save'))}${buttons(btn('= Это точный остаток', 'balance-save', {}, 'ghost'))}`);
   },
   async 'balance-save'() {
     const raw = val('amount').trim();
@@ -117,41 +153,36 @@ export const H = {
     if (a === null) return toast('Не понял сумму', true);
     if (await act('balance_set', { amount: a })) closeSheet();
   },
-  topup() {
-    sheet('Пополнение баланса', `<p class="small muted">Разовое поступление: подарок, возврат, подработка.</p>${field('amount', 'Сумма', 'inputmode="decimal" placeholder="5000"')}${field('name', 'Откуда', 'maxlength="40" placeholder="Подарок"')}${buttons(btn('Пополнить', 'topup-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
-  },
   async 'topup-save'() {
     const amount = parseAmt(val('amount'));
     if (!amount) return toast('Введи сумму', true);
     const r = await act('topup', { amount, name: val('name') });
     if (r) { closeSheet(); toast(`Добавлено ${money(amount)} · на карте ${money(curBalance())}`, false, { label: 'Отменить', run: () => act('topup_undo', { id: r.id }) }); }
   },
-  withdraw() {
-    const cur = S.state.balance ? S.state.cardBalance : S.state.period.now;
-    sheet('Снять с баланса', `<p>Сейчас на карте: <b>${money(cur)}</b></p><p class="small muted">Наличные, перевод, возврат долга. Это не трата: на дневной лимит и категории не влияет, только уменьшает баланс.</p>${field('amount', 'Сумма', 'inputmode="decimal" placeholder="3000 или 3к" data-enter="withdraw-save"')}${field('name', 'На что (необязательно)', 'maxlength="40" placeholder="Наличные"')}${buttons(btn('➖ Снять', 'withdraw-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
-  },
   async 'withdraw-save'() {
     const amount = parseAmt(val('amount'));
     if (!amount) return toast('Введи сумму', true);
     const r = await act('withdraw', { amount, name: val('name') });
-    if (r) { closeSheet(); toast(`Снято ${money(amount)} · на карте ${money(curBalance())}`, false, { label: 'Отменить', run: () => act('topup_undo', { id: r.id }) }); }
+    if (r) { closeSheet(); toast(`Списано ${money(amount)} · на карте ${money(curBalance())}`, false, { label: 'Отменить', run: () => act('topup_undo', { id: r.id }) }); }
   },
   async 'occ-undo'(d) {
     const r = await act('occ_undo', { key: d.key });
     if (r) toast(`Отменено: ${r.name} · на карте ${money(curBalance())}`);
   },
   'goto-plan'() { closeSheet(); S.tab = 'plan'; render(); scrollTo(0, 0); },
-  async 'topup-undo'(d) { if (await ask('Отменить это пополнение?')) await act('topup_undo', { id: d.id }); },
+  async 'topup-undo'(d) { if (await ask('Отменить эту запись? Баланс вернётся как было.')) await act('topup_undo', { id: d.id }); },
 
   'spend-add'() {
     sheet('Новая трата', `${field('amount', 'Сумма', 'inputmode="decimal" placeholder="450"')}${field('name', 'На что', 'maxlength="60" placeholder="Кофе"')}
+      <label for="f-date">Когда</label><input id="f-date" type="date" value="${dayKey(S.state.now)}" max="${dayKey(S.state.now)}">
       <label for="f-cat">Категория</label><select id="f-cat"><option value="">Определить автоматически</option>${Object.entries(S.state.cats).map(([k, c]) => `<option value="${k}">${esc(c.name)}</option>`).join('')}</select>
       ${buttons(btn('Записать', 'spend-add-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
   },
   async 'spend-add-save'() {
     const amount = parseAmt(val('amount'));
     if (!amount) return toast('Введи сумму', true);
-    if (await act('spend_add', { amount, name: val('name'), cat: val('cat') || undefined })) closeSheet();
+    const r = await act('spend_add', { amount, name: val('name'), cat: val('cat') || undefined, date: val('date') || undefined });
+    if (r) { closeSheet(); afterSpend(r, `Записано: ${money(amount)}`); }
   },
   'spend-edit'(d) {
     const x = S.state.spends.find((s) => s.id === d.id);
@@ -159,6 +190,7 @@ export const H = {
     const spreads = S.state.items.filter((i) => i.spread);
     sheet('Трата', `<p class="small muted">${dayLabel(dayKey(x.ts))}, ${timeStr(x.ts)}${x.by ? ` · ${esc(x.by)}` : ''}${x.src === 'bank' ? ' · из выписки' : ''}</p>
       ${field('amount', 'Сумма', `inputmode="decimal" value="${x.amount}"`)}${field('name', 'Название', `maxlength="60" value="${esc(x.name)}"`)}
+      <label for="f-date">Когда</label><input id="f-date" type="date" value="${dayKey(x.ts)}" max="${dayKey(S.state.now)}">
       <label for="f-cat">Категория</label><select id="f-cat">${Object.entries(S.state.cats).map(([k, c]) => `<option value="${k}" ${x.cat === k ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
       ${spreads.length ? `<label for="f-link">Засчитывать в обязательную трату</label><select id="f-link"><option value="auto" ${!x.linkId ? 'selected' : ''}>Автоматически по категории</option><option value="none" ${x.linkId === 'none' ? 'selected' : ''}>Не засчитывать</option>${spreads.map((i) => `<option value="${esc(i.id)}" ${x.linkId === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select>` : ''}
       <input type="hidden" id="f-id" value="${esc(x.id)}">
@@ -172,6 +204,7 @@ export const H = {
     const steps = [];
     if (amount !== x.amount) steps.push(['edit', { id, field: 'amount', value: String(amount) }]);
     if (val('name') !== x.name) steps.push(['edit', { id, field: 'name', value: val('name') }]);
+    if (val('date') && val('date') !== dayKey(x.ts)) steps.push(['edit_date', { id, date: val('date') }]);
     if (val('cat') && val('cat') !== x.cat) steps.push(['edit_cat', { id, cat: val('cat') }]);
     if ($('#f-link') && val('link') !== (x.linkId ?? 'auto')) steps.push(['edit_link', { id, link: val('link') }]);
     for (const [a, p] of steps) if (!(await act(a, p, { silent: true }))) return;
@@ -189,13 +222,14 @@ export const H = {
     if (!amount) return toast('Введи сумму', true);
     const p = { type, amount, name: val('name') };
     if (sched === 'spread') p.spread = true;
-    else { p.day = Number(val('day')); if (sched === 'once') p.once = val('once'); }
+    else if (sched === 'week') { p.every = 'week'; p.weekday = Number(val('weekday')); }
+    else { p.day = Number(val('day')); if (sched === 'once') p.once = val('once'); if (sched === 'quarter' || sched === 'year') { p.every = sched; p.month = Number(val('month')); } }
     if (await act('item_add', p)) closeSheet();
   },
   'item-edit'(d) {
     const it = S.state.items.find((i) => i.id === d.id);
     if (!it) return;
-    const reserveBtn = it.type === 'bill' && !it.spread ? btn(it.fromReserve ? '💳 Платить с карты' : '🏠 Платить из резерва', 'toggle-reserve', { id: it.id }, 'ghost') : '';
+    const reserveBtn = it.type === 'bill' && !it.spread ? btn(it.fromReserve ? '💳 Платить с карты' : '🏠 Платить из копилки', 'toggle-reserve', { id: it.id }, 'ghost') : '';
     sheet(it.type === 'income' ? 'Доход' : 'Платёж', `${itemForm(it)}<input type="hidden" id="f-id" value="${esc(it.id)}">
       ${reserveBtn ? `<div class="actions" style="margin-top:10px">${reserveBtn}</div>` : ''}
       ${buttons(btn('Сохранить', 'item-save'), btn('Удалить', 'del', { id: it.id }, 'danger'))}`);
@@ -236,10 +270,10 @@ export const H = {
     const r = await act('goal_save', { id: val('id'), amount });
     if (r) { closeSheet(); toast(`Накоплено ${money(r.saved)} из ${money(r.target)}`); }
   },
-  async 'goal-del'(d) { if (await ask('Удалить цель?')) await act('goal_delete', { id: d.id }); },
+  async 'goal-del'(d) { if (await ask('Удалить цель? Отложенная сумма на карту не вернётся: сначала нажми «Взять из цели».') && await act('goal_delete', { id: d.id })) closeSheet(); },
 
   'reserve-set'() {
-    sheet('Остаток резерва', `<p class="small muted">Сколько сейчас лежит на счёте под аренду, коммуналку и интернет.</p>${field('amount', 'Сумма', `inputmode="decimal" value="${S.state.reserve?.amount ?? ''}" placeholder="46000"`)}${buttons(btn('Сохранить', 'reserve-set-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+    sheet('Остаток копилки', `<p class="small muted">Сколько сейчас лежит на счёте под аренду, коммуналку и интернет.</p>${field('amount', 'Сумма', `inputmode="decimal" value="${S.state.reserve?.amount ?? ''}" placeholder="46000"`)}${buttons(btn('Сохранить', 'reserve-set-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
   },
   async 'reserve-set-save'() {
     const raw = val('amount').trim(); const a = raw === '0' ? 0 : parseAmt(raw);
@@ -252,28 +286,28 @@ export const H = {
   },
   async 'reserve-sub'(d) { if (await act('reserve_subtract', { amount: Number(d.amount) })) closeSheet(); },
   'reserve-deposit'() {
-    sheet('Перевёл в резерв', `${field('amount', 'Сколько', 'inputmode="decimal" placeholder="30000 или 30к"')}${buttons(btn('Записать', 'reserve-deposit-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+    sheet('Перевёл в копилку', `${field('amount', 'Сколько', 'inputmode="decimal" placeholder="30000 или 30к"')}${buttons(btn('Записать', 'reserve-deposit-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
   },
   async 'reserve-deposit-save'() {
     const amount = parseAmt(val('amount'));
     if (!amount) return toast('Введи сумму', true);
     const r = await act('reserve_deposit', { amount });
-    if (r) { closeSheet(); toast(`В резерве ${money(r.total)}`); }
+    if (r) { closeSheet(); toast(`В копилке ${money(r.total)}`); }
   },
   'reserve-plan'(d) {
     const it = S.state.items.find((i) => i.id === d.id);
-    sheet(`Взнос с «${it?.name ?? ''}»`, `<p class="small muted">Сколько переводить в резерв с этого дохода. 0 — автоматически.</p>${field('amount', 'Сумма', `inputmode="decimal" value="${it?.toReserve ?? ''}" placeholder="0"`)}<input type="hidden" id="f-id" value="${esc(d.id)}">${buttons(btn('Сохранить', 'reserve-plan-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+    sheet(`Взнос с «${it?.name ?? ''}»`, `<p class="small muted">Сколько переводить в копилку с этого дохода. 0 — автоматически.</p>${field('amount', 'Сумма', `inputmode="decimal" value="${it?.toReserve ?? ''}" placeholder="0"`)}<input type="hidden" id="f-id" value="${esc(d.id)}">${buttons(btn('Сохранить', 'reserve-plan-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
   },
   async 'reserve-plan-save'() {
     const raw = val('amount').trim() || '0'; const a = raw === '0' ? 0 : parseAmt(raw);
     if (a === null) return toast('Не понял сумму', true);
     if (await act('reserve_plan', { id: val('id'), amount: a })) closeSheet();
   },
-  'reserve-step'() { sheet('Округление перевода', `<p class="small muted">До какой суммы округлять перевод в резерв вверх.</p>${field('amount', 'Шаг', `inputmode="decimal" value="${S.state.settings.reserveStep ?? 1000}"`)}${buttons(btn('Сохранить', 'reserve-step-save'), btn('Отмена', 'close', {}, 'ghost'))}`); },
+  'reserve-step'() { sheet('Округление перевода', `<p class="small muted">До какой суммы округлять перевод в копилку вверх.</p>${field('amount', 'Шаг', `inputmode="decimal" value="${S.state.settings.reserveStep ?? 1000}"`)}${buttons(btn('Сохранить', 'reserve-step-save'), btn('Отмена', 'close', {}, 'ghost'))}`); },
   async 'reserve-step-save'() { const a = parseAmt(val('amount')); if (!a) return toast('Не понял сумму', true); if (await act('reserve_step', { amount: a })) closeSheet(); },
-  'reserve-contract'() { sheet('Счёт резерва', `<p class="small muted">Последние цифры номера договора: по ним бот узнает переводы на резерв в выписке.</p>${field('number', 'Номер договора', `inputmode="numeric" value="${esc(S.state.reserve?.contract ?? '')}" placeholder="8861"`)}${buttons(btn('Сохранить', 'reserve-contract-save'), btn('Отмена', 'close', {}, 'ghost'))}`); },
+  'reserve-contract'() { sheet('Счёт копилки', `<p class="small muted">Последние цифры номера договора: по ним бот узнает переводы в копилку в выписке.</p>${field('number', 'Номер договора', `inputmode="numeric" value="${esc(S.state.reserve?.contract ?? '')}" placeholder="8861"`)}${buttons(btn('Сохранить', 'reserve-contract-save'), btn('Отмена', 'close', {}, 'ghost'))}`); },
   async 'reserve-contract-save'() { if (val('number').replace(/\D/g, '').length < 3) return toast('Нужно хотя бы 3 цифры', true); if (await act('reserve_contract', { number: val('number') })) closeSheet(); },
-  async 'reserve-off'() { if (await ask('Выключить резерв? Платежи будут считаться с карты.')) await act('reserve_off'); },
+  async 'reserve-off'() { if (await ask('Выключить копилку? Платежи будут считаться с карты.')) await act('reserve_off'); },
   transport() {
     sheet('Транспорт по формуле', `<p class="small muted">Проездной + ставка за каждый рабочий день цикла (по производственному календарю). Дальше бот пересчитывает сам.</p>${field('base', 'Проездной', 'inputmode="decimal" placeholder="3500"')}${field('daily', 'За каждый будний день', 'inputmode="decimal" placeholder="180"')}${buttons(btn('Сохранить', 'transport-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
   },
@@ -316,7 +350,7 @@ export const H = {
     sheet('История изменений', l.length ? `<div class="list">${l.map((e) => `<div class="item" style="cursor:default"><div class="grow"><div class="t" style="white-space:normal">${esc(e.text ?? e.t ?? '')}</div><div class="s">${dayLabel(dayKey(e.ts))}, ${timeStr(e.ts)}</div></div></div>`).join('')}</div>` : '<p class="muted">Пока пусто.</p>');
   },
   ai() {
-    sheet('Промт для ИИ', `<p class="small muted">Соберу данные бюджета и список изменений. Скопируй и вставь в ChatGPT или Claude.</p>${field('q', 'Вопрос (необязательно)', 'maxlength="500" placeholder="Стоит ли брать ноутбук за 80к?"')}<div class="info card" id="ai-out" style="margin-top:12px" hidden></div>${buttons(btn('Собрать промт', 'ai-run'), btn('📋 Копировать', 'ai-copy', {}, 'ghost'))}`);
+    sheet('Спросить совет у ИИ', `<p class="small muted">Соберу данные бюджета в готовый текст. Скопируй его и вставь в ChatGPT или Claude.</p>${field('q', 'Вопрос (необязательно)', 'maxlength="500" placeholder="Стоит ли брать ноутбук за 80к?"')}<div class="info card" id="ai-out" style="margin-top:12px" hidden></div>${buttons(btn('Собрать текст', 'ai-run'), btn('📋 Копировать', 'ai-copy', {}, 'ghost'))}`);
   },
   async 'ai-run'() {
     try {
@@ -325,7 +359,7 @@ export const H = {
     } catch (e) { toast(e.message, true); }
   },
   async 'ai-copy'() {
-    const t = $('#ai-out')?.textContent; if (!t) return toast('Сначала собери промт', true);
+    const t = $('#ai-out')?.textContent; if (!t) return toast('Сначала нажми «Собрать текст»', true);
     try { await navigator.clipboard.writeText(t); toast('Скопировано'); } catch { toast('Нажми на текст и скопируй вручную', true); }
   },
 
@@ -338,7 +372,7 @@ export const H = {
 
   async digest() { await act('digest', { on: !S.state.settings.digest }); },
   cycle() {
-    sheet('Цикл бюджета', `<p class="small muted">С какого числа считать «месяц» для трат без даты. «Авто» — по самому раннему регулярному доходу.</p>${field('day', 'Число месяца (1–31) или «авто»', `value="${S.state.settings.cycleAnchor ?? 'авто'}"`)}${buttons(btn('Сохранить', 'cycle-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+    sheet('С какого числа считать месяц', `<p class="small muted">Обычно это день зарплаты. «Авто» — самое раннее число регулярного дохода.</p>${field('day', 'Число месяца (1–31) или «авто»', `value="${S.state.settings.cycleAnchor ?? 'авто'}"`)}${buttons(btn('Сохранить', 'cycle-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
   },
   async 'cycle-save'() {
     const v = val('day').trim().toLowerCase();

@@ -67,7 +67,7 @@ export function toast(msg, isErr = false, action = null) {
     t.append(' ', b);
   }
   t.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, action ? 6000 : isErr ? 4000 : 2200);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, action ? 10000 : isErr ? 4000 : 2200);
 }
 export const ask = (msg) => new Promise((res) => {
   if (tgw?.showConfirm) tgw.showConfirm(msg, (ok) => res(!!ok)); else res(window.confirm(msg));
