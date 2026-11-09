@@ -24,7 +24,7 @@ export function recentNames(limit = 6) {
   const cnt = new Map();
   for (const x of S.state.spends.slice(0, 80)) {
     const n = (x.name ?? '').trim();
-    if (n && n.length <= 20 && x.src !== 'bank') cnt.set(n, (cnt.get(n) ?? 0) + 1);
+    if (n && n.length <= 20 && x.src !== 'bank' && x.src !== 'plan') cnt.set(n, (cnt.get(n) ?? 0) + 1);
   }
   return [...cnt].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([n]) => n);
 }

@@ -19,6 +19,13 @@ export function budgetChip() {
   return `<button class="ghost small" data-act="chats">📒 ${esc(cur?.title ?? 'Бюджет')} ▾</button>`;
 }
 
+// Одна кнопка на поездку: списывает с карты и из статьи транспорта
+function rideBlock() {
+  const r = S.state.transportRide;
+  if (!r) return '';
+  return `<div class="card row between"><div class="grow"><b>🚌 Транспорт</b><div class="small muted">Осталось ${money(r.remaining)} из ${money(r.amount)}${r.ridesToday ? ` · сегодня поездок: ${r.ridesToday}` : ''}</div></div>${btn(`Поездка ${money(r.price)}`, 'transport-ride', {}, 'small')}</div>`;
+}
+
 export function homeTab() {
   const s = S.state; const p = s.period;
   const lead = p.reserveOn ? '💳 На карте' : '💼 На руках';
@@ -53,6 +60,7 @@ export function homeTab() {
       ${p.hasBalance ? '' : `<div class="small warn" style="margin-top:10px">Задай точный остаток — расчёты станут точнее.</div>`}
       <div class="hero-row tap" data-act="balance" aria-label="Изменить остаток"><span>${lead}${p.hasBalance ? '' : ' · оценка'} <span class="small muted">✏️</span></span><b class="mid">${money(p.now)}</b></div>
     </div>
+    ${rideBlock()}
     ${sec('Записать трату')}
     <div class="card">
       <div class="row gap"><input id="q-amt" data-enter="quick-spend" inputmode="decimal" placeholder="Сумма" style="width:34%"><input id="q-name" data-enter="quick-spend" placeholder="На что (кофе, такси…)" class="grow"></div>
@@ -87,9 +95,10 @@ function payRow(o) {
 }
 function spreadRow(s) {
   const paid = s.remaining <= 0;
-  const action = !paid ? `${btn('другая сумма', 'spread-amount', { id: s.id }, 'linkbtn')}${btn('✅ Оплачено', 'spread-pay', { id: s.id }, 'small paybtn')}`
-    : s.planSpendId ? btn('↩️ Отменить', 'spread-undo', { spend: s.planSpendId }, 'ghost small paybtn') : '<span class="tag">потрачено</span>';
-  return `<div class="item payrow" data-act="item-edit" data-id="${esc(s.id)}"><div class="ico">${paid ? '✅' : catIcon(s.cat)}</div><div class="grow"><div class="t">${esc(s.name)}</div><div class="s">В течение месяца${s.spent > 0 ? ` · потрачено ${money(s.spent)} из ${money(s.amount)}` : ''}</div></div>
+  const pct = s.amount > 0 ? Math.min(100, Math.round(s.spent / s.amount * 100)) : 0;
+  const second = !paid ? btn('оплатить всё', 'spread-pay', { id: s.id }, 'linkbtn') : s.planSpendId ? btn('↩️ отменить последний', 'spread-undo', { spend: s.planSpendId }, 'linkbtn') : '';
+  const action = `${second}${btn('➕ Платёж', 'spread-amount', { id: s.id }, `small paybtn${paid ? ' ghost' : ''}`)}`;
+  return `<div class="item payrow" data-act="item-edit" data-id="${esc(s.id)}"><div class="ico">${paid ? '✅' : catIcon(s.cat)}</div><div class="grow"><div class="t">${esc(s.name)}</div><div class="s">${s.spent > 0 ? `Потрачено ${money(s.spent)} из ${money(s.amount)}` : `Можно платить частями, всего ${money(s.amount)}`}</div>${s.spent > 0 ? `<div class="bar ${s.spent > s.amount ? 'over' : ''}" style="margin-top:6px"><i style="width:${pct}%"></i></div>` : ''}</div>
     <div class="amt">−${money(paid ? s.amount : s.remaining)}</div><div class="payact">${action}</div></div>`;
 }
 // Единый список плана: у каждого пункта своя кнопка, которая сразу меняет баланс

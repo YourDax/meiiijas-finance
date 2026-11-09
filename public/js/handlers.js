@@ -125,7 +125,14 @@ export const H = {
   'spread-amount'(d) {
     const s = S.state.spreadPayments.find((x) => x.id === d.id);
     if (!s) return;
-    sheet(s.name, `<p class="small muted">Осталось ${money(s.remaining)} из ${money(s.amount)}. Укажи, сколько заплатил сейчас.</p>${field('amount', 'Сумма', `inputmode="decimal" value="${s.remaining}"`)}<input type="hidden" id="f-id" value="${esc(s.id)}">${buttons(btn('✅ Оплачено', 'spread-amount-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+    const parts = s.parts ?? [];
+    const history = parts.length ? `<h2>Записано</h2><div class="list">${parts.map((x) => `<div class="item" style="cursor:default"><div class="grow"><div class="t">${money(x.amount)}</div><div class="s">${dayLabel(dayKey(x.ts))}, ${timeStr(x.ts)}</div></div>${btn('↩️ Отменить', 'spread-part-undo', { spend: x.id, id: s.id }, 'ghost small')}</div>`).join('')}</div>` : '';
+    sheet(s.name, `<p class="small muted">Осталось ${money(s.remaining)} из ${money(s.amount)}. Запиши, сколько ушло сейчас: сумма спишется с карты, остальное останется в статье.</p>${field('amount', 'Сумма платежа', 'inputmode="decimal" placeholder="500"')}<input type="hidden" id="f-id" value="${esc(s.id)}">${buttons(btn('➕ Записать', 'spread-amount-save'), btn('Закрыть', 'close', {}, 'ghost'))}${history}`);
+  },
+  async 'spread-part-undo'(d) { if (await act('delete', { id: d.spend })) { toast(`Платёж отменён · на карте ${money(curBalance())}`); H['spread-amount']({ id: d.id }); } },
+  async 'transport-ride'() {
+    const r = await act('transport_ride');
+    if (r) toast(`🚌 Поездка −${money(r.amount)} · на карте ${money(curBalance())}`, false, { label: 'Отменить', run: () => act('delete', { id: r.spendId }) });
   },
   async 'spread-amount-save'() {
     const amount = parseAmt(val('amount'));

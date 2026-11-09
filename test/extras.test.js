@@ -172,3 +172,38 @@ test('итоги месяца: фактические суммы, траты и 
   assert.match(buildView(b.data, today, 'month', { k: 0 }), /Ноябрь 2026/);
   assert.equal(computeMonth(normalize(b.data), today, 1, 'Europe/Moscow').income, 0);
 });
+
+test('статья без даты: несколько мелких платежей и запись сверх статьи', () => {
+  const b = budget();
+  b.step('item_add', { type: 'bill', amount: 1000, name: 'Хобби', spread: true });
+  const row = () => b.state().spreadPayments[0];
+  const first = b.step('spread_pay', { id: row().id, amount: 400 });
+  b.step('spread_pay', { id: row().id, amount: 600 });
+  assert.equal(row().remaining, 0);
+  assert.equal(row().parts.length, 2);
+  assert.throws(() => b.step('spread_pay', { id: row().id }), /Уже оплачено/);
+  b.step('spread_pay', { id: row().id, amount: 50 });
+  assert.equal(b.state().cardBalance, 28950, 'мелкий платёж записывается и после нуля');
+  b.step('delete', { id: first.spendId });
+  assert.equal(row().spent, 650);
+  assert.equal(b.state().cardBalance, 29350);
+});
+
+test('поездка: минус 90 с карты и из статьи транспорта, лимит дня не тратится, отмена возвращает', () => {
+  const b = budget();
+  assert.equal(b.state().transportRide, null, 'без транспорта в плане кнопки нет');
+  assert.throws(() => b.step('transport_ride'), /Транспорта нет/);
+  b.step('item_add', { type: 'bill', amount: 6000, name: 'Транспорт', spread: true });
+  const freeBefore = b.state().period.leftToday;
+  const r = b.step('transport_ride');
+  b.step('transport_ride');
+  const s = b.state();
+  assert.equal(r.amount, 90);
+  assert.equal(s.cardBalance, 29820);
+  assert.equal(s.transportRide.remaining, 5820);
+  assert.equal(s.transportRide.ridesToday, 2);
+  assert.ok(s.period.leftToday >= freeBefore, 'поездка оплачена из статьи, а не из лимита дня');
+  b.step('delete', { id: r.spendId });
+  assert.equal(b.state().cardBalance, 29910);
+  assert.equal(b.state().transportRide.ridesToday, 1);
+});
