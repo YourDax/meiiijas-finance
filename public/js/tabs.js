@@ -90,7 +90,7 @@ function payAction(o) {
 function payRow(o) {
   const note = o.status === 'skipped' ? ' · не было' : o.status === 'done' ? ' · отмечено' : o.status === 'auto' ? ' · уже в остатке' : '';
   const reserve = o.fromReserve && S.state.reserve ? ' · из копилки' : '';
-  return `<div class="item payrow" data-act="item-edit" data-id="${esc(o.id)}"><div class="ico">${PAY_ICO[o.status]}</div><div class="grow"><div class="t">${esc(o.name)}</div><div class="s">${isoStr(o.date)}${reserve}${note}</div></div>
+  return `<div class="item payrow" data-act="item-edit" data-id="${esc(o.id)}" data-key="${esc(o.key)}"><div class="ico">${PAY_ICO[o.status]}</div><div class="grow"><div class="t">${esc(o.name)}</div><div class="s">${isoStr(o.date)}${reserve}${note}</div></div>
     <div class="amt ${o.type === 'income' ? 'pos' : ''}">${o.type === 'income' ? '+' : '−'}${money(o.amount)}</div><div class="payact">${payAction(o)}</div></div>`;
 }
 function spreadRow(s) {

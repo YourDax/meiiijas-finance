@@ -36,6 +36,22 @@ function afterSpend(r, text) {
   else if (text) toast(text);
 }
 
+// Действия только над текущим месяцем: сам пункт и следующие месяцы не меняются
+function monthBlock(it, key) {
+  if (it.type !== 'bill') return '';
+  const note = '<p class="small muted" style="margin:6px 0 0">Только за этот месяц. В следующих месяцах платёж останется.</p>';
+  if (it.spread) {
+    const s = S.state.spreadPayments?.find((x) => x.id === it.id);
+    return s?.parts?.length ? `<div class="actions">${btn('↩️ Не оплачено', 'item-unpay-spread', { id: it.id }, 'ghost')}</div>${note}` : '';
+  }
+  const o = key ? S.state.payments?.find((x) => x.key === key) : null;
+  if (!o) return '';
+  if (o.status === 'done') return `<div class="actions">${btn('↩️ Не оплачено', 'item-unpay', { key }, 'ghost')}</div>${note}`;
+  if (o.status === 'skipped') return `<div class="actions">${btn('↩️ Вернуть в этом месяце', 'item-unpay', { key }, 'ghost')}</div>${note}`;
+  if (o.status === 'open') return `<div class="actions">${btn('🚫 Не платить в этом месяце', 'item-skip', { key }, 'ghost')}</div>${note}`;
+  return '';
+}
+
 export const H = {
   close: () => closeSheet(),
   ...renderExtras,
@@ -239,7 +255,19 @@ export const H = {
     const reserveBtn = it.type === 'bill' && !it.spread ? btn(it.fromReserve ? '💳 Платить с карты' : '🏠 Платить из копилки', 'toggle-reserve', { id: it.id }, 'ghost') : '';
     sheet(it.type === 'income' ? 'Доход' : 'Платёж', `${itemForm(it)}<input type="hidden" id="f-id" value="${esc(it.id)}">
       ${reserveBtn ? `<div class="actions" style="margin-top:10px">${reserveBtn}</div>` : ''}
-      ${buttons(btn('Сохранить', 'item-save'), btn('Удалить', 'del', { id: it.id }, 'danger'))}`);
+      ${monthBlock(it, d.key)}
+      ${buttons(btn('Сохранить', 'item-save'), btn(it.once ? 'Удалить' : 'Удалить навсегда', 'del', { id: it.id }, 'danger'))}`);
+  },
+  async 'item-unpay'(d) {
+    closeSheet();
+    if (await act('occ_undo', { key: d.key })) toast(`Отметка снята · на карте ${money(curBalance())}`);
+  },
+  async 'item-skip'(d) { closeSheet(); await H.occ({ key: d.key, skip: 1 }); },
+  async 'item-unpay-spread'(d) {
+    if (!(await ask('Снять все платежи по этой статье за текущий месяц? Деньги вернутся на карту.'))) return;
+    closeSheet();
+    const r = await act('spread_unpay', { id: d.id });
+    if (r) toast(`Снято ${money(r.sum)} · на карте ${money(curBalance())}`);
   },
   async 'item-save'() {
     const id = val('id'); const it = S.state.items.find((i) => i.id === id);

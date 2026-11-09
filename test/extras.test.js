@@ -207,3 +207,40 @@ test('поездка: минус 90 с карты и из статьи тран�
   assert.equal(b.state().cardBalance, 29910);
   assert.equal(b.state().transportRide.ridesToday, 1);
 });
+
+const nextMonth = { y: 2026, m: 11, d: 9, ts: Date.UTC(2026, 11, 9, 9), monthStart: Date.UTC(2026, 10, 30, 21), dayStart: Date.UTC(2026, 11, 8, 21) };
+
+test('не оплачено: пропуск и снятие отметки меняют только этот месяц', () => {
+  const b = budget();
+  const key = pay(b, 'Коммуналка').key;
+  assert.equal(b.state().period.dueSum, 5000);
+  b.step('occ', { key, skip: 1 });
+  assert.equal(pay(b, 'Коммуналка').status, 'skipped');
+  assert.equal(b.state().period.dueSum, 0, 'в этом месяце платить не нужно');
+  assert.equal(b.state().cardBalance, 30000, 'пропуск не двигает деньги');
+  const next = buildState(b.data, nextMonth, ctx).payments.find((x) => x.name === 'Коммуналка');
+  assert.equal(next.status, 'open', 'в следующем месяце платёж на месте');
+  assert.notEqual(next.key, key);
+  b.step('occ_undo', { key });
+  b.step('occ', { key });
+  assert.equal(b.state().cardBalance, 25000);
+  b.step('occ_undo', { key });
+  assert.equal(b.state().cardBalance, 30000);
+  assert.equal(pay(b, 'Коммуналка').status, 'open');
+});
+
+test('не оплачено у статьи без даты: снимаются все платежи цикла, статья и обычные траты остаются', () => {
+  const b = budget();
+  b.step('item_add', { type: 'bill', amount: 6000, name: 'Транспорт', spread: true });
+  const id = b.state().spreadPayments[0].id;
+  b.step('spread_pay', { id, amount: 500 });
+  b.step('transport_ride');
+  b.step('spend_add', { amount: 300, name: 'такси' });
+  const r = b.step('spread_unpay', { id });
+  assert.deepEqual(r, { count: 2, sum: 590 });
+  const s = b.state();
+  assert.equal(s.cardBalance, 29700, 'обычная трата не снята');
+  assert.equal(s.spreadPayments[0].parts.length, 0);
+  assert.ok(s.items.some((i) => i.id === id), 'статья осталась');
+  assert.throws(() => b.step('spread_unpay', { id }), /Платежей за этот месяц нет/);
+});
