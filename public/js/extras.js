@@ -58,6 +58,7 @@ export const renderExtras = {
       ${minus('Отложить на следующий месяц', p.reserveNextPeriod, b.next)}
       ${Math.abs(later) >= 1 ? detail('Будущие доходы месяца за вычетом их платежей', signed(later), b.future) : ''}
       ${line('Остаётся на жизнь', money(p.cycleTotal))}
+      ${p.freeToday >= 1 ? line('Прибавляем потраченное сегодня: оно входит в лимит дня', `+${money(p.freeToday)}`) : ''}
       ${line('Дней впереди', p.cycleDays)}
       ${line('На один день', money(p.dayBudget))}
       ${line('Уже потрачено сегодня из лимита', money(p.freeToday))}
@@ -68,7 +69,7 @@ export const renderExtras = {
   // ---------- итоги ----------
   async month(d) {
     const k = Math.min(12, Math.max(0, Number(d.k) || 0));
-    return infoSheet('Итоги месяца', 'month', { k }, `<div class="actions" style="margin-bottom:8px">${btn('← Раньше', 'month', { k: k + 1 }, 'ghost')}${btn('Позже →', 'month', { k: k - 1 }, 'ghost')}</div>`);
+    return infoSheet('Итоги месяца', 'month', { k }, `<div class="actions" style="margin-bottom:8px">${k < 12 ? btn('← Раньше', 'month', { k: k + 1 }, 'ghost') : ''}${k > 0 ? btn('Позже →', 'month', { k: k - 1 }, 'ghost') : ''}</div>`);
   },
 
   // ---------- счета ----------

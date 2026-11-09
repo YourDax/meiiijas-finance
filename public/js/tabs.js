@@ -32,14 +32,16 @@ export function homeTab() {
   const left = p.leftToday;
   const pending = p.pending.map((o) => `
     <div class="card"><div class="row"><div class="ico mid">${o.type === 'income' ? '💰' : '📌'}</div>
-      <div class="grow"><b>${esc(o.name)}</b><div class="small muted">${isoStr(o.date)}${o.fromReserve ? ' · из копилки' : ''}</div></div>
+      <div class="grow"><b>${esc(o.name)}</b><div class="small muted">${isoStr(o.date)}${o.fromReserve && s.reserve ? ' · из копилки' : ''}</div></div>
       <b class="${o.type === 'income' ? 'pos' : ''}">${o.type === 'income' ? '+' : '−'}${money(o.amount)}</b></div>
       <div class="row gap" style="margin-top:10px">
         ${btn(o.type === 'income' ? '✅ Получено' : '✅ Оплачено', 'occ', { key: o.key }, 'grow')}
         ${btn('Не было', 'occ', { key: o.key, skip: 1 }, 'ghost')}
       </div></div>`).join('');
   const gaps = p.gaps.map((g) => `<div class="card alert bad small">⚠️ Перед «${esc(g.name)}» (${isoStr(g.date)}) не хватит <b>${money(g.short)}</b></div>`).join('');
-  const due = p.dueList.length ? `${sec('Ближайшие платежи', money(p.dueSum))}<div class="list">${p.dueList.map((o) => payRow(s.payments?.find((x) => x.key === o.key) ?? { ...o, status: 'open', past: true })).join('')}</div>` : '';
+  // Платежи из блока «Было или нет?» второй раз не показываем
+  const dueRows = p.dueList.filter((o) => !p.pending.some((x) => x.key === o.key));
+  const due = dueRows.length ? `${sec('Ближайшие платежи', money(dueRows.reduce((a, o) => a + o.amount, 0)))}<div class="list">${dueRows.map((o) => payRow(s.payments?.find((x) => x.key === o.key) ?? { ...o, status: 'open', past: true })).join('')}</div>` : '';
   const cats = Object.entries(p.byCatPeriod).sort((a, b) => b[1] - a[1]);
   const total = cats.reduce((x, [, v]) => x + v, 0) || 1;
   const catBlock = cats.length ? `${sec('Траты периода', money(p.spentPeriod))}<div class="card">${cats.map(([k, v]) => `
@@ -56,7 +58,7 @@ export function homeTab() {
       <div class="small muted">Сегодня ещё можно потратить <button class="q" data-act="explain-limit" aria-label="Как считается эта сумма">?</button></div>
       <div class="big ${left <= 0 ? 'neg' : ''}">${money(left)}</div>
       <div class="bar ${p.freeToday > p.dayBudget ? 'over' : ''}"><i style="width:${p.dayBudget > 0 ? Math.min(100, Math.round(p.freeToday / p.dayBudget * 100)) : 0}%"></i></div>
-      <div class="small muted">Потрачено ${money(p.freeToday)} из ${money(p.dayBudget)} на день</div>
+      <div class="small muted">${p.dayBudget > 0 ? `Потрачено ${money(p.freeToday)} из ${money(p.dayBudget)} на день` : `Потрачено ${money(p.freeToday)}, свободных денег на день нет`}</div>
       ${p.hasBalance ? '' : `<div class="small warn" style="margin-top:10px">Задай точный остаток — расчёты станут точнее.</div>`}
       <div class="hero-row tap" data-act="balance" aria-label="Изменить остаток"><span>${lead}${p.hasBalance ? '' : ' · оценка'} <span class="small muted">✏️</span></span><b class="mid">${money(p.now)}</b></div>
     </div>
@@ -71,7 +73,7 @@ export function homeTab() {
     ${pending ? `${sec('Было или нет?')}${pending}` : ''}
     ${sec(p.noIncome ? 'До конца месяца' : 'До зарплаты', p.nextIncome ? `${esc(p.nextIncome.name)}, ${isoStr(p.nextIncome.date)}` : '')}
     <div class="card"><div class="stats" style="margin-top:0">
-      <div class="stat"><span class="small muted">Можно потратить</span><b>${money(p.pool)}</b></div>
+      <div class="stat"><span class="small muted">Можно потратить</span><b>${money(Math.max(0, p.pool))}</b></div>
       <div class="stat"><span class="small muted">Осталось дней</span><b>${p.days} дн.</b></div>
       <div class="stat"><span class="small muted">Можно в неделю</span><b>${money(p.perWeek)}</b></div>
       <div class="stat"><span class="small muted">Платежи</span><b>${money(p.dueSum)}</b></div>
@@ -189,11 +191,13 @@ export function planTab() {
   const s = S.state;
   const sect = (title, list) => list.length ? `<h2>${title}</h2><div class="list">${list.map((it) => `
     <div class="item" data-act="item-edit" data-id="${esc(it.id)}"><div class="ico">${it.type === 'income' ? '💰' : it.spread ? catIcon(it.cat) : '📌'}</div>
-      <div class="grow"><div class="t">${esc(it.name)}</div><div class="s">${whenText(it)}${it.type === 'bill' && !it.spread && it.fromReserve ? ' · 🏠 из копилки' : ''}${it.by ? ` · ${esc(it.by)}` : ''}</div></div>
+      <div class="grow"><div class="t">${esc(it.name)}</div><div class="s">${whenText(it)}${it.type === 'bill' && !it.spread && it.fromReserve && s.reserve ? ' · 🏠 из копилки' : ''}${it.by ? ` · ${esc(it.by)}` : ''}</div></div>
       <div class="amt ${it.type === 'income' ? 'pos' : ''}">${money(it.amount)}</div></div>`).join('')}</div>` : '';
   // Пункты, у которых сейчас нечего отмечать: разовые из других месяцев
   const active = new Set([...(s.payments ?? []).map((o) => o.id), ...(s.spreadPayments ?? []).map((x) => x.id)]);
-  const other = s.items.filter((i) => !active.has(i.id)).sort((a, b) => (a.once ?? '').localeCompare(b.once ?? ''));
+  const cur = thisMonth();
+  const isPast = (i) => i.once && (i.once < cur || (i.once === cur && i.day < s.today.d)); // прошедшее — не «Позже»
+  const other = s.items.filter((i) => !active.has(i.id) && !i.topup && !isPast(i)).sort((a, b) => (a.once ?? '').localeCompare(b.once ?? ''));
   const { settled } = planRows();
   return `
     <div class="row between"><h1>План</h1>${btn('➕ Добавить', 'item-add', {}, 'small')}</div>
@@ -216,10 +220,10 @@ export function goalsTab() {
   return `<div class="row between"><h1>Цели</h1>${btn('➕ Цель', 'goal-add', {}, 'small')}</div>
     ${gs.length ? gs.map((g) => { const st = g.status; return `
       <div class="card"><div class="row between"><b>🎯 ${esc(g.name)}</b>${st.done ? '<span class="tag">готово ✅</span>' : st.overdue ? '<span class="tag">срок вышел</span>' : ''}</div>
-        <div class="small muted">до ${ymGen(g.deadline)}${st.done ? '' : ` · осталось ${st.monthsLeft} мес.`}</div>
+        <div class="small muted">до ${ymGen(g.deadline)}${st.done || st.overdue ? '' : ` · осталось ${st.monthsLeft} мес.`}</div>
         <div class="bar ${st.done ? 'ok' : ''}" style="margin:10px 0 6px"><i style="width:${st.percent}%"></i></div>
         <div class="row between small"><span>${money(g.saved)} из ${money(g.target)}</span><b>${st.percent}%</b></div>
-        ${st.done ? '' : `<div class="small muted">Откладывать по ${money(st.perMonth)} в месяц</div>`}
+        ${st.done ? '' : `<div class="small muted">${st.overdue ? `Осталось накопить ${money(st.remaining)}. Можно изменить срок` : `Откладывать по ${money(st.perMonth)} в месяц`}</div>`}
         <div class="row gap wrap" style="margin-top:10px">${btn('🐷 Отложить', 'goal-save', { id: g.id }, 'grow')}${g.saved > 0 ? btn('Взять из цели', 'goal-out', { id: g.id }, 'ghost') : ''}${btn('✏️ Изменить', 'goal-edit', { id: g.id }, 'ghost')}</div></div>`; }).join('')
       : `<div class="center pad"><p class="muted">Цель помогает копить: укажи сумму и срок, и приложение подскажет, сколько откладывать в месяц.</p>${btn('🎯 Создать первую цель', 'goal-add')}</div>`}
     <div class="row gap wrap">${btn('📋 Сводка по целям', 'view', { name: 'goals', title: 'Цели' }, 'ghost small')}</div>`;

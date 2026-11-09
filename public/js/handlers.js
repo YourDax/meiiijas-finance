@@ -16,7 +16,7 @@ export async function deleteSpendWithUndo(id) {
   toast(`Удалено: ${money(x.amount)} ${x.name ?? ''}`.trim(), false, {
     label: 'Отменить',
     run: async () => {
-      const keep = { amount: x.amount, name: x.name, cat: x.cat, ts: x.ts, by: x.by, src: x.src, merchant: x.merchant };
+      const keep = { amount: x.amount, name: x.name, cat: x.cat, ts: x.ts, by: x.by, src: x.src, merchant: x.merchant, linkId: x.linkId, catManual: x.catManual };
       if (await act('spend_restore', keep, { silent: true })) toast('Трата возвращена');
     },
   });
@@ -101,7 +101,7 @@ export const H = {
     const r = await act('spend_add', { amount, name: $('#q-name').value.trim() });
     if (r) afterSpend(r, `Записано: ${money(amount)}`);
   },
-  async 'undo-last'() { const r = await act('spend_undo'); if (r?.undone) toast(`Отменено: ${money(r.undone.amount)} ${r.undone.name ?? ''}`); },
+  async 'undo-last'() { if (!(await ask('Отменить последнюю записанную вручную трату?'))) return; const r = await act('spend_undo'); if (r?.undone) toast(`Отменено: ${money(r.undone.amount)} ${r.undone.name ?? ''}`); },
 
   async occ(d) {
     const r = await act('occ', { key: d.key, skip: !!d.skip, amount: d.amount ? Number(d.amount) : undefined });
@@ -110,7 +110,7 @@ export const H = {
       const t = r.transfer;
       sheet('🏠 Перевод в копилку', `<p><b>${esc(t.name)}</b> пришёл. Переведи в копилку <b>${money(t.amount)}</b>.</p>
         <p class="small muted">К ${isoStr(t.deadline)} нужно ${money(t.need)}, в копилке ${money(t.have)}${t.later.length ? `. Остальное закроет доход: ${t.later.map((x) => `${isoStr(x.date)} +${money(x.amount)}`).join(', ')}` : ''}.</p>
-        ${buttons(btn(`✅ Перевёл ${money(t.amount)}`, 'reserve-quick', { amount: t.amount }), btn('Другая сумма', 'reserve-deposit', {}, 'ghost'))}${r.leftover ? '' : buttons(btn('Позже', 'close', {}, 'ghost'))}`);
+        ${buttons(btn(`✅ Перевёл ${money(t.amount)}`, 'reserve-quick', { amount: t.amount }), btn('Другая сумма', 'reserve-deposit', {}, 'ghost'))}${buttons(btn('Позже', 'close', {}, 'ghost'))}`);
       S.confirm = r.leftover ?? null;
     } else if (r.leftover) leftoverSheet(r.leftover);
     else toast(d.skip ? 'Отмечено: не было' : occToast(r.occ), false, { label: 'Отменить', run: () => act('occ_undo', { key: d.key }) });
@@ -198,7 +198,7 @@ export const H = {
   'spend-add'() {
     sheet('Новая трата', `${field('amount', 'Сумма', 'inputmode="decimal" placeholder="450"')}${field('name', 'На что', 'maxlength="60" placeholder="Кофе"')}
       <label for="f-date">Когда</label><input id="f-date" type="date" value="${dayKey(S.state.now)}" max="${dayKey(S.state.now)}">
-      <label for="f-cat">Категория</label><select id="f-cat"><option value="">Определить автоматически</option>${Object.entries(S.state.cats).map(([k, c]) => `<option value="${k}">${esc(c.name)}</option>`).join('')}</select>
+      <label for="f-cat">Категория</label><select id="f-cat"><option value="">Определить автоматически</option>${Object.entries(S.state.cats).map(([k, c]) => `<option value="${esc(k)}">${esc(c.name)}</option>`).join('')}</select>
       ${buttons(btn('Записать', 'spend-add-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
   },
   async 'spend-add-save'() {
@@ -214,7 +214,7 @@ export const H = {
     sheet('Трата', `<p class="small muted">${dayLabel(dayKey(x.ts))}, ${timeStr(x.ts)}${x.by ? ` · ${esc(x.by)}` : ''}${x.src === 'bank' ? ' · из выписки' : ''}</p>
       ${field('amount', 'Сумма', `inputmode="decimal" value="${x.amount}"`)}${field('name', 'Название', `maxlength="60" value="${esc(x.name)}"`)}
       <label for="f-date">Когда</label><input id="f-date" type="date" value="${dayKey(x.ts)}" max="${dayKey(S.state.now)}">
-      <label for="f-cat">Категория</label><select id="f-cat">${Object.entries(S.state.cats).map(([k, c]) => `<option value="${k}" ${x.cat === k ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+      <label for="f-cat">Категория</label><select id="f-cat">${Object.entries(S.state.cats).map(([k, c]) => `<option value="${esc(k)}" ${x.cat === k ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
       ${spreads.length ? `<label for="f-link">Засчитывать в обязательную трату</label><select id="f-link"><option value="auto" ${!x.linkId ? 'selected' : ''}>Автоматически по категории</option><option value="none" ${x.linkId === 'none' ? 'selected' : ''}>Не засчитывать</option>${spreads.map((i) => `<option value="${esc(i.id)}" ${x.linkId === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select>` : ''}
       <input type="hidden" id="f-id" value="${esc(x.id)}">
       ${buttons(btn('Сохранить', 'spend-save'), btn('Удалить', 'del', { id: x.id }, 'danger'))}`);
@@ -252,7 +252,7 @@ export const H = {
   'item-edit'(d) {
     const it = S.state.items.find((i) => i.id === d.id);
     if (!it) return;
-    const reserveBtn = it.type === 'bill' && !it.spread ? btn(it.fromReserve ? '💳 Платить с карты' : '🏠 Платить из копилки', 'toggle-reserve', { id: it.id }, 'ghost') : '';
+    const reserveBtn = it.type === 'bill' && !it.spread && S.state.reserve ? btn(it.fromReserve ? '💳 Платить с карты' : '🏠 Платить из копилки', 'toggle-reserve', { id: it.id }, 'ghost') : '';
     sheet(it.type === 'income' ? 'Доход' : 'Платёж', `${itemForm(it)}<input type="hidden" id="f-id" value="${esc(it.id)}">
       ${reserveBtn ? `<div class="actions" style="margin-top:10px">${reserveBtn}</div>` : ''}
       ${monthBlock(it, d.key)}
@@ -344,11 +344,11 @@ export const H = {
   async 'reserve-contract-save'() { if (val('number').replace(/\D/g, '').length < 3) return toast('Нужно хотя бы 3 цифры', true); if (await act('reserve_contract', { number: val('number') })) closeSheet(); },
   async 'reserve-off'() { if (await ask('Выключить копилку? Платежи будут считаться с карты.')) await act('reserve_off'); },
   transport() {
-    sheet('Транспорт по формуле', `<p class="small muted">Проездной + ставка за каждый рабочий день цикла (по производственному календарю). Дальше бот пересчитывает сам.</p>${field('base', 'Проездной', 'inputmode="decimal" placeholder="3500"')}${field('daily', 'За каждый будний день', 'inputmode="decimal" placeholder="180"')}${buttons(btn('Сохранить', 'transport-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+    sheet('Транспорт по формуле', `<p class="small muted">Проездной + ставка за каждый рабочий день цикла (по производственному календарю). Дальше бот пересчитывает сам.</p>${field('base', 'Проездной (0, если его нет)', 'inputmode="decimal" placeholder="3500"')}${field('daily', 'За каждый будний день', 'inputmode="decimal" placeholder="180"')}${buttons(btn('Сохранить', 'transport-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
   },
   async 'transport-save'() {
-    const base = parseAmt(val('base')); const daily = parseAmt(val('daily'));
-    if (!base || !daily) return toast('Заполни обе суммы', true);
+    const base = val('base').trim() === '0' ? 0 : parseAmt(val('base')); const daily = parseAmt(val('daily'));
+    if (base === null || !daily) return toast('Заполни обе суммы', true);
     if (await act('transport', { base, daily })) closeSheet();
   },
 
@@ -378,7 +378,7 @@ export const H = {
   async view(d) { return infoSheet(d.title || 'Подробнее', d.name); },
   async forecast(d) {
     const k = Math.min(6, Math.max(1, Number(d.k) || 1));
-    return infoSheet('Планирование вперёд', 'forecast', { k }, `<div class="actions" style="margin-bottom:8px">${btn('← Раньше', 'forecast', { k: k - 1 }, 'ghost')}${btn('Дальше →', 'forecast', { k: k + 1 }, 'ghost')}</div>`);
+    return infoSheet('Планирование вперёд', 'forecast', { k }, `<div class="actions" style="margin-bottom:8px">${k > 1 ? btn('← Раньше', 'forecast', { k: k - 1 }, 'ghost') : ''}${k < 6 ? btn('Дальше →', 'forecast', { k: k + 1 }, 'ghost') : ''}</div>`);
   },
   async log() {
     const l = S.state.log;

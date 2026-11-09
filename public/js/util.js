@@ -15,7 +15,7 @@ export const tz = () => S.state?.tz || 'Europe/Moscow';
 export const dayKey = (ts) => new Date(ts).toLocaleDateString('en-CA', { timeZone: tz() });
 export const timeStr = (ts) => new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: tz() });
 export const dayLabel = (key) => { const [, m, d] = key.split('-').map(Number); return `${d} ${MONTHS[m - 1]}`; };
-export const catIcon = (k) => (S.state.cats[k]?.name ?? '📦').split(' ')[0];
+export const catIcon = (k) => esc((S.state.cats[k]?.name ?? '📦').split(' ')[0]); // имя своей категории задаёт пользователь
 export const catTitle = (k) => (S.state.cats[k]?.name ?? '📦 Другое');
 export const thisMonth = () => { const t = S.state.today; return `${t.y}-${String(t.m + 1).padStart(2, '0')}`; };
 

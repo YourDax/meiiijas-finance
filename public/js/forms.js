@@ -17,7 +17,7 @@ export function itemForm(it) {
       <div id="w-day">${field('day', 'Число месяца', 'inputmode="numeric" placeholder="1–31"')}</div>
       <div id="w-once" hidden><label for="f-once">Месяц</label><input id="f-once" type="month" value="${thisMonth()}"></div>`}
     ${it?.every ? `<p class="small muted">Когда: ${esc(whenText(it))}. Чтобы сменить повтор, удали пункт и добавь заново.</p>` : it ? `<label for="f-when">Когда (число, «в течение месяца», «в ноябре»)</label><input id="f-when" value="${esc(whenText(it).replace(/^Каждый месяц · /, ''))}">` : ''}
-    ${it?.spread ? `<label for="f-cat">Категория</label><select id="f-cat">${Object.entries(S.state.cats).map(([k, c]) => `<option value="${k}" ${it.cat === k ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>` : ''}
+    ${it?.spread ? `<label for="f-cat">Категория</label><select id="f-cat">${Object.entries(S.state.cats).map(([k, c]) => `<option value="${esc(k)}" ${it.cat === k ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>` : ''}
     ${spreadable ? '' : ''}`;
 }
 
