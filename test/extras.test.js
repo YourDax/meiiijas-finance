@@ -244,3 +244,27 @@ test('не оплачено у статьи без даты: снимаются 
   assert.ok(s.items.some((i) => i.id === id), 'статья осталась');
   assert.throws(() => b.step('spread_unpay', { id }), /Платежей за этот месяц нет/);
 });
+
+test('разбор лимита: строки каждого раздела дают сумму своей строки расчёта', () => {
+  const b = budget();
+  b.step('item_add', { type: 'income', amount: 50000, name: 'Аванс', day: 1 });
+  b.step('item_add', { type: 'bill', amount: 40000, name: 'Аренда', day: 16 });
+  b.step('item_add', { type: 'bill', amount: 2000, name: 'Подписка', day: 25 });
+  b.step('item_add', { type: 'bill', amount: 3000, name: 'Кредит', day: 14 });
+  b.step('item_add', { type: 'bill', amount: 6000, name: 'Транспорт', spread: true });
+  b.step('reserve_set', { amount: 5000 });
+  const p = b.state().period;
+  const total = (rows) => Math.round(rows.reduce((a, r) => a + r.amount, 0) * 100) / 100;
+  const d = p.breakdown;
+  assert.equal(total(d.due), -p.dueSum);
+  assert.ok(d.due.some((r) => r.name === 'Кредит' && r.date === '2026-11-14'), 'платёж виден по имени и дате');
+  assert.equal(total(d.spread), -p.reserveTotal);
+  assert.deepEqual(d.spread.map((r) => r.name), ['Транспорт']);
+  assert.equal(total(d.transfer), -p.transferNow);
+  assert.ok(p.transferNow > 0);
+  assert.ok(d.transfer[0].name.includes('Аренда'));
+  const later = Math.round((p.cycleTotal - (p.now - p.dueSum - p.reserveTotal - p.transferNow - p.reserveNextPeriod)) * 100) / 100;
+  assert.equal(total(d.future), later);
+  assert.ok(d.future.some((r) => r.name === 'Зарплата' && r.amount === 80000));
+  assert.ok(d.future.some((r) => r.name === 'Подписка' && r.amount === -2000));
+});

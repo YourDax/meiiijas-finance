@@ -178,3 +178,14 @@ button.q { min-height: 26px; width: 26px; height: 26px; padding: 0; border-radiu
 .payrow { flex-wrap: wrap; }
 /* Кнопки у левого края: справа внизу экрана их перекрывала бы круглая кнопка «+» */
 .payact { flex-basis: 100%; display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: 14px; padding-left: 38px; }
+
+/* Разворачиваемые строки в разборе лимита */
+details.calc { margin: 6px 0; font-size: 13px; }
+details.calc summary { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; cursor: pointer; list-style: none; color: var(--link); }
+details.calc summary::-webkit-details-marker { display: none; }
+details.calc summary > span::before { content: '▸'; display: inline-block; width: 14px; transition: transform .15s; }
+details.calc[open] summary > span::before { transform: rotate(90deg); }
+details.calc summary b { color: var(--text); white-space: nowrap; }
+.calc-rows { margin: 6px 0 10px 14px; padding-left: 10px; border-left: 2px solid var(--line); }
+.calc-rows .row { padding: 3px 0; align-items: baseline; }
+.calc-rows b { white-space: nowrap; }

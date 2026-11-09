@@ -1,6 +1,6 @@
 // Обработчики новых разделов: мастер настройки, счета, долги, цели, лимиты, категории, итоги.
 import { S, store, act } from './state.js';
-import { $, esc, money, thisMonth, parseAmt, toast, ask } from './util.js';
+import { $, esc, money, thisMonth, parseAmt, toast, ask, isoStr } from './util.js';
 import { closeSheet, sheet, val, field, buttons, btn, infoSheet } from './ui.js';
 import { render, curBalance } from './tabs.js';
 
@@ -43,16 +43,20 @@ export const renderExtras = {
   'explain-limit'() {
     const p = S.state.period;
     const line = (t, v, cls = '') => `<div class="row between small" style="margin:6px 0"><span>${t}</span><b class="${cls}">${v}</b></div>`;
-    const minus = (t, v) => (v >= 1 ? line(t, `−${money(v)}`) : '');
+    const b = p.breakdown ?? {};
+    const signed = (v) => `${v > 0 ? '+' : '−'}${money(Math.abs(v))}`;
+    // Строка расчёта, которая раскрывается в список: какие именно платежи и доходы в ней учтены
+    const detail = (t, value, rows, cls = '') => (rows?.length ? `<details class="calc"><summary><span>${t}</span><b class="${cls}">${value}</b></summary><div class="calc-rows">${rows.map((r) => `<div class="row between small"><span>${esc(r.name)}${r.date || r.note ? ` <span class="muted">· ${r.date ? isoStr(r.date) : esc(r.note)}</span>` : ''}</span><b class="${r.amount > 0 ? 'pos' : ''}">${signed(r.amount)}</b></div>`).join('')}</div></details>` : line(t, value, cls));
+    const minus = (t, v, rows) => (v >= 1 ? detail(t, `−${money(v)}`, rows) : '');
     const known = p.now - p.dueSum - p.reserveTotal - p.transferNow - p.reserveNextPeriod;
     const later = p.cycleTotal - known;
-    sheet('Как считается лимит на день', `<div class="card" style="padding:8px 0">
+    sheet('Как считается лимит на день', `<p class="small muted">Строки со стрелкой раскрываются: там видно, что именно вычитается и прибавляется.</p><div class="card" style="padding:8px 14px">
       ${line('На карте сейчас', money(p.now))}
-      ${minus(`Платежи ${p.noIncome ? 'до конца месяца' : 'до зарплаты'}`, p.dueSum)}
-      ${minus('Обязательные траты без даты', p.reserveTotal)}
-      ${minus('Отложить в копилку на аренду', p.transferNow)}
-      ${minus('Отложить на следующий месяц', p.reserveNextPeriod)}
-      ${Math.abs(later) >= 1 ? line('Будущие доходы месяца за вычетом их платежей', `${later > 0 ? '+' : '−'}${money(Math.abs(later))}`) : ''}
+      ${minus(`Платежи ${p.noIncome ? 'до конца месяца' : 'до зарплаты'}`, p.dueSum, b.due)}
+      ${minus('Обязательные траты без даты', p.reserveTotal, b.spread)}
+      ${minus('Отложить в копилку на аренду', p.transferNow, b.transfer)}
+      ${minus('Отложить на следующий месяц', p.reserveNextPeriod, b.next)}
+      ${Math.abs(later) >= 1 ? detail('Будущие доходы месяца за вычетом их платежей', signed(later), b.future) : ''}
       ${line('Остаётся на жизнь', money(p.cycleTotal))}
       ${line('Дней впереди', p.cycleDays)}
       ${line('На один день', money(p.dayBudget))}
