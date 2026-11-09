@@ -77,7 +77,7 @@ export const H = {
     sheet('Выбери бюджет', `<div class="list">${S.chats.map((c) => `<div class="item" data-act="pick-chat" data-id="${c.id}"><div class="ico">${c.type === 'private' ? '👤' : '👥'}</div><div class="grow"><div class="t">${esc(c.title)}</div></div>${c.id === S.chatId ? '✅' : ''}</div>`).join('')}</div>
       <p class="small muted">Беседа появляется здесь после того, как ты напишешь боту в ней.</p>`);
   },
-  async 'pick-chat'(d) { closeSheet(); S.chatId = Number(d.id); store.set('chat', String(S.chatId)); S.state = null; await hooks.load(); },
+  async 'pick-chat'(d) { closeSheet(); S.chatId = Number(d.id); store.set('chat', String(S.chatId)); S.state = null; S.planSettled = null; await hooks.load(); },
 
   async 'quick-spend'() {
     const amount = parseAmt($('#q-amt').value);
