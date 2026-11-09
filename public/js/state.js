@@ -3,7 +3,7 @@ import { haptic, toast } from './util.js';
 
 export const tgw = window.Telegram?.WebApp;
 export const hooks = { render: () => {}, boot: () => {}, load: () => {} };
-export const S = { state: null, chatId: null, chats: [], tab: 'home', confirm: null, filter: { month: 'cur', q: '' } };
+export const S = { state: null, chatId: null, chats: [], tab: 'home', accTab: 'accounts', confirm: null, filter: { month: 'cur', q: '' } };
 export const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* без хранилища работаем как обычно */ } },

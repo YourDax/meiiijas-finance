@@ -36,6 +36,7 @@ export const renderExtras = {
     if (!Number.isInteger(day) || day < 1 || day > 31) return toast('Число месяца от 1 до 31', true);
     if (await act('item_add', { type: d.type, amount, name: val('name'), day }, { silent: true })) renderExtras.wizard({ step: d.next });
   },
+  'acc-tab'(d) { S.accTab = d.tab; render(); window.scrollTo(0, 0); },
   'swipe-ok'() { store.set('swipe-hint', '1'); render(); },
 
   // Откуда взялась сумма на день

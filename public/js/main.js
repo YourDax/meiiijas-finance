@@ -116,7 +116,11 @@ async function load() {
 }
 
 // Цвета статусов зависят от светлой/тёмной темы Telegram
-const applyTheme = () => { document.documentElement.dataset.theme = tgw?.colorScheme ?? ''; };
+const applyTheme = () => {
+  document.documentElement.dataset.theme = tgw?.colorScheme ?? '';
+  const color = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  try { tgw?.setHeaderColor?.(color('--page')); tgw?.setBackgroundColor?.(color('--page')); tgw?.setBottomBarColor?.(color('--bg')); } catch { /* старые клиенты */ }
+};
 
 async function boot() {
   applyTheme();
@@ -125,7 +129,7 @@ async function boot() {
     $('#app').innerHTML = '<div class="card center"><p class="mid">📱 Открой из Telegram</p><p class="muted">Это мини-приложение бота. Отправь боту команду /app и нажми кнопку.</p></div>';
     return;
   }
-  try { tgw.ready(); tgw.expand(); tgw.setHeaderColor?.('secondary_bg_color'); tgw.setBackgroundColor?.('secondary_bg_color'); } catch { /* старые клиенты */ }
+  try { tgw.ready(); tgw.expand(); } catch { /* старые клиенты */ }
   bindPdf();
   try {
     const c = await api('chats', {}, null);
