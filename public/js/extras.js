@@ -56,7 +56,7 @@ export const renderExtras = {
       ${line('Остаётся на жизнь', money(p.cycleTotal))}
       ${line('Дней впереди', p.cycleDays)}
       ${line('На один день', money(p.dayBudget))}
-      ${line('Уже потрачено сегодня', money(p.spentToday))}
+      ${line('Уже потрачено сегодня из лимита', money(p.freeToday))}
       ${line('Сегодня ещё можно', money(p.leftToday), p.leftToday <= 0 ? 'neg' : 'pos')}
     </div>${buttons(btn('Понятно', 'close'))}`);
   },

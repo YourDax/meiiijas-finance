@@ -55,8 +55,8 @@ export function homeTab() {
     <div class="card hero">
       <div class="small muted">Сегодня ещё можно потратить <button class="q" data-act="explain-limit" aria-label="Как считается эта сумма">?</button></div>
       <div class="big ${left <= 0 ? 'neg' : ''}">${money(left)}</div>
-      <div class="bar ${p.spentToday > p.dayBudget ? 'over' : ''}"><i style="width:${p.dayBudget > 0 ? Math.min(100, Math.round(p.spentToday / p.dayBudget * 100)) : 0}%"></i></div>
-      <div class="small muted">Потрачено ${money(p.spentToday)} из ${money(p.dayBudget)} на день</div>
+      <div class="bar ${p.freeToday > p.dayBudget ? 'over' : ''}"><i style="width:${p.dayBudget > 0 ? Math.min(100, Math.round(p.freeToday / p.dayBudget * 100)) : 0}%"></i></div>
+      <div class="small muted">Потрачено ${money(p.freeToday)} из ${money(p.dayBudget)} на день</div>
       ${p.hasBalance ? '' : `<div class="small warn" style="margin-top:10px">Задай точный остаток — расчёты станут точнее.</div>`}
       <div class="hero-row tap" data-act="balance" aria-label="Изменить остаток"><span>${lead}${p.hasBalance ? '' : ' · оценка'} <span class="small muted">✏️</span></span><b class="mid">${money(p.now)}</b></div>
     </div>
