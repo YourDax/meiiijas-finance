@@ -189,7 +189,7 @@ test('статья без даты: несколько мелких платеж
   assert.equal(b.state().cardBalance, 29350);
 });
 
-test('поездка: минус 90 с карты и из статьи транспорта, лимит дня не тратится, отмена возвращает', () => {
+test('поездка: минус 92 с карты и из статьи транспорта, лимит дня не тратится, отмена возвращает', () => {
   const b = budget();
   assert.equal(b.state().transportRide, null, 'без транспорта в плане кнопки нет');
   assert.throws(() => b.step('transport_ride'), /Транспорта нет/);
@@ -198,13 +198,13 @@ test('поездка: минус 90 с карты и из статьи тран�
   const r = b.step('transport_ride');
   b.step('transport_ride');
   const s = b.state();
-  assert.equal(r.amount, 90);
-  assert.equal(s.cardBalance, 29820);
-  assert.equal(s.transportRide.remaining, 5820);
+  assert.equal(r.amount, 92);
+  assert.equal(s.cardBalance, 29816);
+  assert.equal(s.transportRide.remaining, 5816);
   assert.equal(s.transportRide.ridesToday, 2);
   assert.ok(s.period.leftToday >= freeBefore, 'поездка оплачена из статьи, а не из лимита дня');
   b.step('delete', { id: r.spendId });
-  assert.equal(b.state().cardBalance, 29910);
+  assert.equal(b.state().cardBalance, 29908);
   assert.equal(b.state().transportRide.ridesToday, 1);
 });
 
@@ -237,7 +237,7 @@ test('не оплачено у статьи без даты: снимаются 
   b.step('transport_ride');
   b.step('spend_add', { amount: 300, name: 'такси' });
   const r = b.step('spread_unpay', { id });
-  assert.deepEqual(r, { count: 2, sum: 590 });
+  assert.deepEqual(r, { count: 2, sum: 592 });
   const s = b.state();
   assert.equal(s.cardBalance, 29700, 'обычная трата не снята');
   assert.equal(s.spreadPayments[0].parts.length, 0);
