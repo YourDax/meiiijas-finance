@@ -71,6 +71,9 @@ function updateHistory(e) {
 }
 document.addEventListener('input', updateHistory);
 document.addEventListener('change', updateHistory);
+document.addEventListener('change', (e) => {
+  if (e.target.dataset?.input === 'plan-month' && e.target.value) H['plan-month']({ month: e.target.value });
+});
 
 // Файл выписки: читаем как base64 и показываем предпросмотр, прежде чем что-то записывать
 function bindPdf() {

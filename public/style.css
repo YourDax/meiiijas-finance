@@ -77,6 +77,10 @@ h2 .sum { font-size: 14px; font-weight: 600; color: var(--hint); white-space: no
 .history-totals { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; }
 .history-totals b { display: block; }
 .history-items .history-entry:not(:last-child) .item { border-bottom: 1px solid var(--line); }
+.plan-month-nav { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: stretch; text-align: center; }
+.plan-month-nav > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.plan-month-nav input { min-width: 0; text-align: center; padding-block: 5px; }
+.plan-month-shortcuts { margin: 8px 0 12px; }
 
 button, .btn { font: inherit; border: 0; border-radius: 12px; padding: 10px 14px; background: var(--btn); color: var(--btn-text); font-weight: 600; cursor: pointer; }
 button.ghost { background: var(--bg2); color: var(--text); }

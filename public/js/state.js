@@ -10,10 +10,10 @@ export const store = {
 };
 
 // ---------- запросы ----------
-export async function api(action, payload = {}, chatId = S.chatId) {
+export async function api(action, payload = {}, chatId = S.chatId, planMonth = S.planMonth) {
   const r = await fetch('/api/app', {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ initData: tgw.initData, chatId: chatId ?? undefined, action, payload }),
+    body: JSON.stringify({ initData: tgw.initData, chatId: chatId ?? undefined, planMonth, action, payload }),
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `Ошибка ${r.status}`);

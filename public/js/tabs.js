@@ -99,39 +99,6 @@ function payRow(o) {
   return `<div class="item payrow" data-act="item-edit" data-id="${esc(o.id)}" data-key="${esc(o.key)}"><div class="ico">${PAY_ICO[o.status]}</div><div class="grow"><div class="t">${esc(o.name)}</div><div class="s">${isoStr(o.date)}${reserve}${note}</div></div>
     <div class="amt ${o.type === 'income' ? 'pos' : ''}">${o.type === 'income' ? '+' : '−'}${money(o.amount)}</div><div class="payact">${payAction(o)}</div></div>`;
 }
-function spreadRow(s) {
-  const paid = s.remaining <= 0;
-  const pct = s.amount > 0 ? Math.min(100, Math.round(s.spent / s.amount * 100)) : 0;
-  const second = !paid ? btn('оплатить всё', 'spread-pay', { id: s.id }, 'linkbtn') : s.planSpendId ? btn('↩️ отменить последний', 'spread-undo', { spend: s.planSpendId }, 'linkbtn') : '';
-  const action = `${second}${btn('➕ Платёж', 'spread-amount', { id: s.id }, `small paybtn${paid ? ' ghost' : ''}`)}`;
-  return `<div class="item payrow" data-act="item-edit" data-id="${esc(s.id)}"><div class="ico">${paid ? '✅' : catIcon(s.cat)}</div><div class="grow"><div class="t">${esc(s.name)}</div><div class="s">${s.spent > 0 ? `Потрачено ${money(s.spent)} из ${money(s.amount)}` : `Можно платить частями, всего ${money(s.amount)}`}</div>${s.spent > 0 ? `<div class="bar ${s.spent > s.amount ? 'over' : ''}" style="margin-top:6px"><i style="width:${pct}%"></i></div>` : ''}</div>
-    <div class="amt">−${money(paid ? s.amount : s.remaining)}</div><div class="payact">${action}</div></div>`;
-}
-// Единый список плана: у каждого пункта своя кнопка, которая сразу меняет баланс
-// Что уходит вниз, решается один раз при входе на вкладку: только что оплаченная строка остаётся на месте до переключения вкладки
-function planRows() {
-  const s = S.state;
-  const pays = s.payments ?? [];
-  const spreads = s.spreadPayments ?? [];
-  if (!S.planSettled) S.planSettled = new Set([...pays.filter((o) => o.status !== 'open').map((o) => o.key), ...spreads.filter((x) => x.remaining <= 0).map((x) => x.id)]);
-  return {
-    pays: pays.filter((o) => !S.planSettled.has(o.key)), spreads: spreads.filter((x) => !S.planSettled.has(x.id)),
-    settled: [...pays.filter((o) => S.planSettled.has(o.key)).map(payRow), ...spreads.filter((x) => S.planSettled.has(x.id)).map(spreadRow)],
-  };
-}
-function paymentsBlock() {
-  const { pays, spreads } = planRows();
-  const bills = pays.filter((o) => o.type === 'bill');
-  const incomes = pays.filter((o) => o.type === 'income');
-  if (!pays.length && !spreads.length) return '';
-  const wait = (l) => { const n = l.filter((o) => o.status === 'open').length; return n ? `ждут: ${n}` : ''; };
-  const list = (rows) => `<div class="list">${rows.join('')}</div>`;
-  return `<p class="small muted" style="margin:14px 2px 0">Кнопка сразу меняет баланс. Если нажать по ошибке, «↩️ Отменить» вернёт деньги.</p>
-    ${bills.length ? `${sec('Обязательные платежи', wait(bills))}${list(bills.map(payRow))}` : ''}
-    ${spreads.length ? `${sec('В течение месяца')}${list(spreads.map(spreadRow))}` : ''}
-    ${incomes.length ? `${sec('Поступления', wait(incomes))}${list(incomes.map(payRow))}` : ''}`;
-}
-
 // Сколько потрачено на этой неделе и в этом месяце против прошлых, и 14 дней столбиками
 function dynamicsBlock() {
   const s = S.state;
@@ -153,33 +120,58 @@ function limitsBlock() {
   return `<h2>Лимиты на месяц</h2><div class="card">${list.map((l) => { const over = l.spent > l.limit; return `<div class="tap" data-act="cat-limit-edit" data-cat="${esc(l.cat)}" style="margin:2px 0 8px"><div class="row between small"><span>${esc(catTitle(l.cat))}</span><b class="${over ? 'neg' : ''}">${money(l.spent)} из ${money(l.limit)}</b></div><div class="bar ${over ? 'over' : ''}"><i style="width:${Math.min(100, Math.round(l.spent / l.limit * 100))}%"></i></div></div>`; }).join('')}</div>`;
 }
 
-export const whenText = (it) => it.everyLabel ? it.everyLabel[0].toUpperCase() + it.everyLabel.slice(1) : it.spread ? 'В течение месяца' : it.once ? `Один раз · ${it.day}-го, ${ymLabel(it.once)}` : `Каждый месяц · ${it.day}-го`;
+export const whenText = (it) => it.everyLabel ? it.everyLabel[0].toUpperCase() + it.everyLabel.slice(1)
+  : it.spread ? (it.once ? `В течение месяца · ${ymLabel(it.once)}` : 'В течение месяца')
+    : it.once ? `Один раз · ${it.day}-го, ${ymLabel(it.once)}` : `Каждый месяц · ${it.day}-го`;
 
 export function planTab() {
   const s = S.state;
-  const sect = (title, list) => list.length ? `<h2>${title}</h2><div class="list">${list.map((it) => `
-    <div class="item" data-act="item-edit" data-id="${esc(it.id)}"><div class="ico">${it.type === 'income' ? '💰' : it.spread ? catIcon(it.cat) : '📌'}</div>
-      <div class="grow"><div class="t">${esc(it.name)}</div><div class="s">${whenText(it)}${it.type === 'bill' && !it.spread && it.fromReserve && s.reserve ? ' · 🏠 из копилки' : ''}${it.by ? ` · ${esc(it.by)}` : ''}</div></div>
-      <div class="amt ${it.type === 'income' ? 'pos' : ''}">${money(it.amount)}</div></div>`).join('')}</div>` : '';
-  // Пункты, у которых сейчас нечего отмечать: разовые из других месяцев
-  const active = new Set([...(s.payments ?? []).map((o) => o.id), ...(s.spreadPayments ?? []).map((x) => x.id)]);
-  const cur = thisMonth();
-  const isPast = (i) => i.once && (i.once < cur || (i.once === cur && i.day < s.today.d)); // прошедшее — не «Позже»
-  const other = s.items.filter((i) => !active.has(i.id) && !i.topup && !isPast(i)).sort((a, b) => (a.once ?? '').localeCompare(b.once ?? ''));
-  const { settled } = planRows();
+  const p = s.monthPlan;
+  if (!p) return '<h1>План</h1><p class="muted">Загрузка плана…</p>';
+  const [year, month] = p.ym.split('-').map(Number);
+  const offset = (year - s.today.y) * 12 + month - 1 - s.today.m;
+  const active = new Map((p.activeCycle ? s.spreadPayments : []).map((x) => [x.id, x]));
+  const row = (o, spread) => {
+    const live = spread ? active.get(o.id) : null;
+    const subtitle = [
+      spread ? catTitle(o.cat) : isoStr(o.date),
+      o.once ? 'Разовый' : '',
+      o.fromReserve && s.reserve ? 'Из копилки' : '',
+      o.customAmount ? 'Сумма изменена' : '',
+      o.status === 'done' ? `Подтверждено${o.actualAmount != null && o.actualAmount !== o.amount ? ` · ${money(o.actualAmount)}` : ''}` : '',
+      o.status === 'skipped' ? 'Пропущено' : '',
+      o.status === 'auto' ? 'Учтено в остатке' : '',
+      live?.spent > 0 ? `Потрачено ${money(live.spent)}` : '',
+    ].filter(Boolean).map(esc).join(' · ');
+    const icon = o.status === 'done' ? '✅' : o.status === 'skipped' ? '⏭' : spread ? catIcon(o.cat) : o.type === 'income' ? '💰' : '📌';
+    return `<div class="item" data-act="plan-entry" data-id="${esc(o.id)}" data-key="${esc(o.key)}">
+      <div class="ico" aria-hidden="true">${icon}</div><div class="grow"><div class="t">${esc(o.name)}</div><div class="s">${subtitle}</div></div>
+      <div class="amt ${o.type === 'income' ? 'pos' : ''}">${money(o.amount)}</div><span class="muted" aria-hidden="true">›</span></div>`;
+  };
+  const section = (title, rows, spread = false) => rows.length ? `${sec(title, money(rows.reduce((sum, x) => sum + x.amount, 0)))}<div class="list">${rows.map((o) => row(o, spread)).join('')}</div>` : '';
   return `
-    <div class="row between"><h1>План</h1>${btn('➕ Добавить', 'item-add', {}, 'small')}</div>
-    <div class="card lines"><div class="row between tap" data-act="balance"><span>${s.period.reserveOn ? '💳 На карте' : '💼 На руках'} <span class="small muted">✏️</span></span><b class="mid">${money(curBalance())}</b></div>
-      ${s.reserve ? `<div class="row between"><span class="muted">🏠 В копилке</span><b>${money(s.reserve.amount)}</b></div>` : ''}
-      <div class="row between"><span class="muted">Доходы в месяц</span><b class="pos">${money(s.plan.totalIncome)}</b></div>
-      <div class="row between"><span class="muted">Обязательные</span><b>${money(s.plan.totalBills)}</b></div>
-      <div class="row between"><span class="muted">Свободно</span><b class="${s.plan.free < 0 ? 'neg' : ''}">${money(s.plan.free)}</b></div></div>
-    ${paymentsBlock()}
-    ${sect('Позже', other)}
-    ${settled.length ? `${sec('Уже оплачено и получено', String(settled.length))}<div class="list">${settled.join('')}</div>` : ''}
-    ${s.items.length ? '' : `<div class="center pad"><p class="muted">Здесь будут зарплата, аренда, кредит и другие регулярные суммы.</p>${btn('➕ Добавить первый пункт', 'item-add')}</div>`}
+    <div class="row between"><h1>План</h1>${btn('＋ Добавить', 'item-add', { month: p.ym }, 'small')}</div>
+    <div class="plan-month-nav">
+      <button class="ghost" data-act="plan-month" data-step="-1" aria-label="Предыдущий месяц">‹</button>
+      <div><strong>${ymLabel(p.ym)}</strong><input type="month" aria-label="Месяц плана" data-input="plan-month" value="${p.ym}" min="2000-01" max="2099-12"></div>
+      <button class="ghost" data-act="plan-month" data-step="1" aria-label="Следующий месяц относительно выбранного">›</button>
+    </div>
+    <div class="row between small plan-month-shortcuts">
+      ${btn('Текущий', 'plan-month', { month: thisMonth() }, 'ghost small')}${btn('Следующий', 'plan-next', {}, 'ghost small')}
+    </div>
+    <div class="card lines">
+      <div class="row between"><span class="muted">Доходы</span><b class="pos">${money(p.totalIncome)}</b></div>
+      <div class="row between"><span class="muted">Обязательные расходы</span><b>${money(p.totalBills)}</b></div>
+      <div class="row between"><span class="muted">Остаётся по плану</span><b class="${p.free < 0 ? 'neg' : ''}">${money(p.free)}</b></div>
+    </div>
+    ${section('Поступления', p.incomes)}
+    ${section('Платежи по датам', p.bills)}
+    ${section('В течение месяца', p.spreads, true)}
+    ${!p.incomes.length && !p.bills.length && !p.spreads.length ? '<p class="muted center">На этот месяц ничего не запланировано.</p>' : ''}
     ${sec('Подробнее')}<div class="row gap wrap">
-      ${btn('💬 Записать фразой', 'nl', {}, 'ghost small')}${btn('🗓 Прогноз', 'forecast', { k: 1 }, 'ghost small')}${btn('📋 Подробный план', 'view', { name: 'plan', title: 'План подробно' }, 'ghost small')}
+      ${btn('💬 Записать фразой', 'nl', {}, 'ghost small')}
+      ${offset > 0 && offset <= 6 ? btn('🗓 Прогноз на этот месяц', 'forecast', { k: offset }, 'ghost small') : btn('📋 Подробный текущий план', 'view', { name: 'plan', title: 'План подробно' }, 'ghost small')}
+      ${btn('Регулярные и разовые пункты', 'plan-templates', {}, 'ghost small')}
     </div>`;
 }
 
@@ -284,10 +276,8 @@ export function moreTab() {
 
 export const TAB = { home: homeTab, history: () => historyTab(limitsBlock()), plan: planTab, goals: goalsTab, reserve: reserveTab, more: moreTab };
 
-let renderedTab = null;
 export function render() {
   if (!S.state) return;
-  if (S.tab !== renderedTab) { S.planSettled = null; renderedTab = S.tab; }
   const tabs = $('#tabs');
   tabs.hidden = false;
   tabs.innerHTML = TABS.map(([k, ico, label]) => `<button class="${S.tab === k ? 'on' : ''}" data-act="tab" data-tab="${k}"><span>${ico}</span>${label}</button>`).join('');

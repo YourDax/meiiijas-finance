@@ -1,11 +1,21 @@
 // Обработчики действий (data-act).
 import { S, store, api, act, hooks } from './state.js';
-import { $, esc, money, isoStr, dayKey, timeStr, dayLabel, catTitle, thisMonth, parseAmt, setInfo, haptic, toast, ask } from './util.js';
+import { $, esc, money, isoStr, dayKey, timeStr, dayLabel, catTitle, thisMonth, ymLabel, parseAmt, setInfo, haptic, toast, ask } from './util.js';
 import { renderExtras } from './extras.js';
 import { closeSheet, sheet, val, field, buttons, btn, infoSheet } from './ui.js';
 import { whenText, render, curBalance } from './tabs.js';
 import { historyList } from './history.js';
 import { itemForm, bindItemForm, confirmSheet, leftoverSheet } from './forms.js';
+
+const monthEvent = (key) => [...(S.state.monthPlan?.incomes ?? []), ...(S.state.monthPlan?.bills ?? [])].find((o) => o.key === key);
+const payment = (key) => monthEvent(key) ?? S.state.payments.find((o) => o.key === key);
+
+function shiftMonth(ym, step) {
+  const [year, month] = ym.split('-').map(Number);
+  const index = year * 12 + month - 1 + step;
+  return `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, '0')}`;
+}
+let monthRequest = 0;
 
 // ---------- действия ----------
 // Удаляет трату сразу и предлагает вернуть её (с прежним временем) в течение нескольких секунд
@@ -109,7 +119,7 @@ export const H = {
     sheet('Выбери бюджет', `<div class="list">${S.chats.map((c) => `<div class="item" data-act="pick-chat" data-id="${c.id}"><div class="ico">${c.type === 'private' ? '👤' : '👥'}</div><div class="grow"><div class="t">${esc(c.title)}</div></div>${c.id === S.chatId ? '✅' : ''}</div>`).join('')}</div>
       <p class="small muted">Беседа появляется здесь после того, как ты напишешь боту в ней.</p>`);
   },
-  async 'pick-chat'(d) { closeSheet(); S.chatId = Number(d.id); store.set('chat', String(S.chatId)); S.state = null; S.planSettled = null; await hooks.load(); },
+  async 'pick-chat'(d) { closeSheet(); monthRequest++; S.chatId = Number(d.id); store.set('chat', String(S.chatId)); S.state = null; S.planMonth = undefined; await hooks.load(); },
 
   async 'quick-spend'() {
     const amount = parseAmt($('#q-amt').value);
@@ -133,7 +143,7 @@ export const H = {
   },
   // Дата пункта раньше заданного остатка: сумма считается уже учтённой, поэтому списываем только после подтверждения
   'occ-auto'(d) {
-    const o = S.state.payments.find((x) => x.key === d.key);
+    const o = payment(d.key);
     if (!o) return;
     const income = o.type === 'income';
     sheet(`${o.name} · ${money(o.amount)}`, `<p>Дата этого ${income ? 'поступления' : 'платежа'} раньше, чем ты указал остаток, поэтому он считается уже учтённым.</p>
@@ -142,7 +152,7 @@ export const H = {
   },
   async 'occ-auto-do'(d) { closeSheet(); await H.occ({ key: d.key }); },
   'occ-amount'(d) {
-    const o = S.state.payments.find((x) => x.key === d.key);
+    const o = payment(d.key);
     if (!o) return;
     const income = o.type === 'income';
     sheet(o.name, `<p class="small muted">По плану ${money(o.amount)}. Укажи, сколько ${income ? 'пришло' : 'заплатил'} на самом деле. Сумма в плане не изменится.</p>${field('amount', 'Сумма', `inputmode="decimal" value="${o.amount}"`)}<input type="hidden" id="f-key" value="${esc(o.key)}">${buttons(btn(income ? '✅ Получено' : '✅ Оплачено', 'occ-amount-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
@@ -299,8 +309,60 @@ export const H = {
   async 'history-spend-delete'(d) { if (await ask('Удалить трату?') && await deleteSpendWithUndo(d.id)) closeSheet(); },
   async del(d) { if (await ask('Удалить?')) { if (await act('delete', { id: d.id })) closeSheet(); } },
 
-  'item-add'() {
-    const sh = sheet('Новый пункт плана', itemForm(null) + buttons(btn('Добавить', 'item-add-save'), btn('Отмена', 'close', {}, 'ghost')));
+  'plan-next'() { return H['plan-month']({ month: shiftMonth(thisMonth(), 1) }); },
+  async 'plan-month'(d) {
+    const month = d.month || shiftMonth(S.state.monthPlan.ym, Number(d.step));
+    if (!/^20\d\d-(0[1-9]|1[0-2])$/.test(month)) return;
+    const id = ++monthRequest;
+    const chatId = S.chatId;
+    try {
+      const j = await api('state', {}, chatId, month);
+      if (id !== monthRequest || chatId !== S.chatId) return;
+      S.planMonth = month;
+      S.state = j.state;
+      render();
+    } catch (error) {
+      if (id === monthRequest && chatId === S.chatId) { render(); toast(error.message, true); }
+    }
+  },
+  'plan-entry'(d) {
+    const plan = S.state.monthPlan;
+    const row = d.key ? monthEvent(d.key) : plan.spreads.find((x) => x.id === d.id);
+    if (!row) return;
+    const month = row.weekly ? isoStr(row.date) : ymLabel(plan.ym);
+    const args = { id: row.id, month: plan.ym, key: row.key ?? '' };
+    const live = !d.key && plan.activeCycle && S.state.spreadPayments.find((x) => x.id === row.id);
+    let actual = '';
+    if (live) actual = buttons(btn('Записать платёж', 'spread-amount', { id: row.id }, 'ghost'));
+    else if (row.status === 'done' || row.status === 'skipped') actual = buttons(btn('Снять отметку', 'item-unpay', { key: row.key }, 'ghost'));
+    else if (row.canConfirm) {
+      const confirm = btn(row.type === 'income' ? 'Получено' : 'Оплачено', row.status === 'auto' ? 'occ-auto' : 'plan-confirm', { key: row.key }, 'ghost');
+      actual = row.status === 'auto' ? buttons(confirm) : buttons(confirm, btn('Другая фактическая сумма', 'occ-amount', { key: row.key }, 'ghost'));
+      if (row.status === 'open' && row.type === 'bill') actual += buttons(btn('Пропустить платёж', 'item-skip', { key: row.key }, 'ghost'));
+    }
+    const scope = row.weekly ? 'Сохранить на эту дату' : 'Сохранить на этот месяц';
+    sheet(row.name, `<p class="small muted">${esc(month)}${row.customAmount ? ` · Обычная сумма ${money(row.baseAmount)}` : ''}</p>
+      ${field('amount', 'Плановая сумма', `inputmode="decimal" value="${row.amount}"`)}
+      ${buttons(btn(scope, 'plan-entry-save', args), row.customAmount ? btn('Вернуть обычную сумму', 'plan-entry-reset', args, 'ghost') : '')}
+      ${actual}
+      ${buttons(btn(row.once ? 'Настройки разового пункта' : 'Настройки регулярного пункта', 'item-edit', { id: row.id }, 'ghost'))}`);
+  },
+  async 'plan-entry-save'(d) {
+    const amount = parseAmt(val('amount'));
+    if (!amount) return toast('Введи сумму', true);
+    if (await act('item_month_amount', { id: d.id, key: d.key, month: d.month, amount })) { closeSheet(); toast('План обновлён'); }
+  },
+  async 'plan-entry-reset'(d) {
+    if (await act('item_month_amount', { id: d.id, key: d.key, month: d.month, reset: true })) { closeSheet(); toast('Обычная сумма восстановлена'); }
+  },
+  'plan-confirm'(d) { closeSheet(); return H.occ(d); },
+  'plan-templates'() {
+    const items = S.state.items.filter((it) => !it.topup);
+    sheet('Пункты плана', items.length ? `<div class="list">${items.map((it) => `<div class="item" role="button" tabindex="0" data-act="item-edit" data-id="${esc(it.id)}">
+      <div class="grow"><div class="t">${esc(it.name)}</div><div class="s">${esc(whenText(it))}</div></div><div class="amt">${money(it.amount)}</div></div>`).join('')}</div>` : '<p>Список пока пуст.</p>');
+  },
+  'item-add'(d = {}) {
+    const sh = sheet('Новый пункт плана', itemForm(null, d.month) + buttons(btn('Добавить', 'item-add-save'), btn('Отмена', 'close', {}, 'ghost')));
     bindItemForm(sh);
   },
   async 'item-add-save'() {
@@ -308,9 +370,13 @@ export const H = {
     const amount = parseAmt(val('amount'));
     if (!amount) return toast('Введи сумму', true);
     const p = { type, amount, name: val('name') };
-    if (sched === 'spread') p.spread = true;
+    if (sched === 'spread' || sched === 'once-spread') p.spread = true;
     else if (sched === 'week') { p.every = 'week'; p.weekday = Number(val('weekday')); }
-    else { p.day = Number(val('day')); if (sched === 'once') p.once = val('once'); if (sched === 'quarter' || sched === 'year') { p.every = sched; p.month = Number(val('month')); } }
+    else { p.day = Number(val('day')); if (sched === 'quarter' || sched === 'year') { p.every = sched; p.month = Number(val('month')); } }
+    if (sched === 'once' || sched === 'once-spread') {
+      p.once = val('once');
+      if (!p.once) return toast('Выбери месяц', true);
+    }
     if (await act('item_add', p)) closeSheet();
   },
   'item-edit'(d) {
