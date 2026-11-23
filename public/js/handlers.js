@@ -334,18 +334,28 @@ export const H = {
     const live = !d.key && plan.activeCycle && S.state.spreadPayments.find((x) => x.id === row.id);
     let actual = '';
     if (live) actual = buttons(btn('Записать платёж', 'spread-amount', { id: row.id }, 'ghost'));
-    else if (row.status === 'done' || row.status === 'skipped') actual = buttons(btn('Снять отметку', 'item-unpay', { key: row.key }, 'ghost'));
-    else if (row.canConfirm) {
+    else if (row.status === 'done') actual = buttons(btn('Снять отметку об оплате', 'item-unpay', { key: row.key }, 'ghost'));
+    else if (row.canConfirm && row.status !== 'skipped') {
       const confirm = btn(row.type === 'income' ? 'Получено' : 'Оплачено', row.status === 'auto' ? 'occ-auto' : 'plan-confirm', { key: row.key }, 'ghost');
       actual = row.status === 'auto' ? buttons(confirm) : buttons(confirm, btn('Другая фактическая сумма', 'occ-amount', { key: row.key }, 'ghost'));
-      if (row.status === 'open' && row.type === 'bill') actual += buttons(btn('Пропустить платёж', 'item-skip', { key: row.key }, 'ghost'));
     }
+    if (row.type !== 'income' && row.status !== 'done') actual += buttons(btn(row.status === 'skipped' ? 'Вернуть в план' : 'Не платить в этом месяце', 'plan-month-skip', args, 'ghost'));
     const scope = row.weekly ? 'Сохранить на эту дату' : 'Сохранить на этот месяц';
     sheet(row.name, `<p class="small muted">${esc(month)}${row.customAmount ? ` · Обычная сумма ${money(row.baseAmount)}` : ''}</p>
       ${field('amount', 'Плановая сумма', `inputmode="decimal" value="${row.amount}"`)}
       ${buttons(btn(scope, 'plan-entry-save', args), row.customAmount ? btn('Вернуть обычную сумму', 'plan-entry-reset', args, 'ghost') : '')}
       ${actual}
+      ${row.transport ? buttons(btn('Настроить транспорт', 'transport', { id: row.id }, 'ghost')) : ''}
       ${buttons(btn(row.once ? 'Настройки разового пункта' : 'Настройки регулярного пункта', 'item-edit', { id: row.id }, 'ghost'))}`);
+  },
+  async 'plan-month-skip'(d) {
+    const row = d.key ? monthEvent(d.key) : S.state.monthPlan?.spreads.find((x) => x.id === d.id);
+    if (!row) return;
+    const skipped = row.status === 'skipped';
+    const result = skipped && !row.monthSkipped
+      ? await act('occ_undo', { key: d.key })
+      : await act('item_month_skip', { id: d.id, month: d.month, skip: !skipped });
+    if (result) { closeSheet(); toast(skipped ? 'Платёж возвращён в план' : 'Платёж исключён из расчёта на этот месяц'); }
   },
   async 'plan-entry-save'(d) {
     const amount = parseAmt(val('amount'));
@@ -385,6 +395,7 @@ export const H = {
     const reserveBtn = it.type === 'bill' && !it.spread && S.state.reserve ? btn(it.fromReserve ? '💳 Платить с карты' : '🏠 Платить из копилки', 'toggle-reserve', { id: it.id }, 'ghost') : '';
     sheet(it.type === 'income' ? 'Доход' : 'Платёж', `${itemForm(it)}<input type="hidden" id="f-id" value="${esc(it.id)}">
       ${reserveBtn ? `<div class="actions" style="margin-top:10px">${reserveBtn}</div>` : ''}
+      ${it.transport ? buttons(btn('Настроить транспорт', 'transport', { id: it.id }, 'ghost')) : ''}
       ${monthBlock(it, d.key)}
       ${buttons(btn('Сохранить', 'item-save'), btn(it.once ? 'Удалить' : 'Удалить навсегда', 'del', { id: it.id }, 'danger'))}`);
   },
@@ -392,7 +403,10 @@ export const H = {
     closeSheet();
     if (await act('occ_undo', { key: d.key })) toast(`Отметка снята · на карте ${money(curBalance())}`);
   },
-  async 'item-skip'(d) { closeSheet(); await H.occ({ key: d.key, skip: 1 }); },
+  async 'item-skip'(d) {
+    const row = payment(d.key);
+    if (row && await act('item_month_skip', { id: row.id, month: row.date.slice(0, 7), skip: true })) closeSheet();
+  },
   async 'item-unpay-spread'(d) {
     if (!(await ask('Снять все платежи по этой статье за текущий месяц? Деньги вернутся на карту.'))) return;
     closeSheet();
@@ -473,13 +487,27 @@ export const H = {
   'reserve-contract'() { sheet('Счёт копилки', `<p class="small muted">Последние цифры номера договора: по ним бот узнает переводы в копилку в выписке.</p>${field('number', 'Номер договора', `inputmode="numeric" value="${esc(S.state.reserve?.contract ?? '')}" placeholder="8861"`)}${buttons(btn('Сохранить', 'reserve-contract-save'), btn('Отмена', 'close', {}, 'ghost'))}`); },
   async 'reserve-contract-save'() { if (val('number').replace(/\D/g, '').length < 3) return toast('Нужно хотя бы 3 цифры', true); if (await act('reserve_contract', { number: val('number') })) closeSheet(); },
   async 'reserve-off'() { if (await ask('Выключить копилку? Платежи будут считаться с карты.')) await act('reserve_off'); },
-  transport() {
-    sheet('Транспорт по формуле', `<p class="small muted">Проездной + ставка за каждый рабочий день цикла (по производственному календарю). Дальше бот пересчитывает сам.</p>${field('base', 'Проездной (0, если его нет)', 'inputmode="decimal" placeholder="3500"')}${field('daily', 'За каждый будний день', 'inputmode="decimal" placeholder="180"')}${buttons(btn('Сохранить', 'transport-save'), btn('Отмена', 'close', {}, 'ghost'))}`);
+  transport(d = {}) {
+    const item = d.id ? S.state.items.find((it) => it.id === d.id) : S.state.items.find((it) => it.transport && !it.once);
+    const formula = item?.formula;
+    const custom = S.state.monthPlan?.spreads.find((x) => x.id === item?.id)?.customAmount;
+    sheet('Бюджет на транспорт', `
+      ${field('base', 'Проездной или другой фиксированный платёж за месяц', `inputmode="decimal" placeholder="3500" value="${formula?.base ?? ''}"`)}
+      ${field('daily', 'Расход на транспорт в день', `inputmode="decimal" placeholder="180" value="${formula?.daily ?? ''}"`)}
+      <label for="f-travel-days">Дни поездок</label><select id="f-travel-days">
+        <option value="work" ${formula?.days === 'all' ? '' : 'selected'}>Рабочие дни по производственному календарю</option>
+        <option value="all" ${formula?.days === 'all' ? 'selected' : ''}>Каждый календарный день</option>
+      </select>
+      <p class="small muted">Сумма за цикл — фиксированный платёж плюс расход в день × число дней поездок.</p>
+      ${custom ? '<p class="small muted">Для выбранного месяца задана отдельная сумма. В карточке платежа можно вернуть расчёт по формуле.</p>' : ''}
+      ${buttons(btn('Сохранить формулу', 'transport-save', { id: item?.id ?? '' }), btn('Закрыть', 'close', {}, 'ghost'))}`);
   },
-  async 'transport-save'() {
-    const base = val('base').trim() === '0' ? 0 : parseAmt(val('base')); const daily = parseAmt(val('daily'));
-    if (base === null || !daily) return toast('Заполни обе суммы', true);
-    if (await act('transport', { base, daily })) closeSheet();
+  async 'transport-save'(d) {
+    const optionalAmount = (raw) => !raw.trim() || /^0(?:[.,]0+)?$/.test(raw.trim()) ? 0 : parseAmt(raw);
+    const base = optionalAmount(val('base'));
+    const daily = optionalAmount(val('daily'));
+    if (base === null || daily === null || (!base && !daily)) return toast('Укажи стоимость проездного или сумму в день', true);
+    if (await act('transport', { id: d.id || undefined, base, daily, days: val('travel-days') })) { closeSheet(); toast('Бюджет на транспорт пересчитан'); }
   },
 
   nl() {

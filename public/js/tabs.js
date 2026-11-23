@@ -130,25 +130,38 @@ export function planTab() {
   if (!p) return '<h1>План</h1><p class="muted">Загрузка плана…</p>';
   const [year, month] = p.ym.split('-').map(Number);
   const offset = (year - s.today.y) * 12 + month - 1 - s.today.m;
-  const active = new Map((p.activeCycle ? s.spreadPayments : []).map((x) => [x.id, x]));
+  const byId = new Map(s.items.map((it) => [it.id, it]));
   const row = (o, spread) => {
-    const live = spread ? active.get(o.id) : null;
+    const skipped = o.status === 'skipped';
+    const formula = spread && !o.customAmount ? byId.get(o.id)?.formula : null;
     const subtitle = [
       spread ? catTitle(o.cat) : isoStr(o.date),
       o.once ? 'Разовый' : '',
       o.fromReserve && s.reserve ? 'Из копилки' : '',
       o.customAmount ? 'Сумма изменена' : '',
       o.status === 'done' ? `Подтверждено${o.actualAmount != null && o.actualAmount !== o.amount ? ` · ${money(o.actualAmount)}` : ''}` : '',
-      o.status === 'skipped' ? 'Пропущено' : '',
+      skipped ? 'Не платим в этом месяце' : '',
       o.status === 'auto' ? 'Учтено в остатке' : '',
-      live?.spent > 0 ? `Потрачено ${money(live.spent)}` : '',
+      formula ? `${money(formula.base)} за проездной + ${money(formula.daily)} × ${o.travelDays} дн.` : '',
     ].filter(Boolean).map(esc).join(' · ');
     const icon = o.status === 'done' ? '✅' : o.status === 'skipped' ? '⏭' : spread ? catIcon(o.cat) : o.type === 'income' ? '💰' : '📌';
-    return `<div class="item" data-act="plan-entry" data-id="${esc(o.id)}" data-key="${esc(o.key)}">
-      <div class="ico" aria-hidden="true">${icon}</div><div class="grow"><div class="t">${esc(o.name)}</div><div class="s">${subtitle}</div></div>
-      <div class="amt ${o.type === 'income' ? 'pos' : ''}">${money(o.amount)}</div><span class="muted" aria-hidden="true">›</span></div>`;
+    const progress = spread ? `<div class="plan-progress">
+      <div class="small muted">Потрачено ${money(o.spent)} из ${money(o.amount)}</div>
+      <progress aria-label="Потрачено ${money(o.spent)} из ${money(o.amount)}" class="${o.spent > o.amount ? 'over' : ''}" value="${Math.min(o.spent, o.amount)}" max="${o.amount || 1}"></progress>
+    </div>` : '';
+    const skip = o.type !== 'income' && o.status !== 'done' ? btn(skipped ? 'Вернуть в план' : 'Не платить в этом месяце', 'plan-month-skip',
+      { id: o.id, key: o.key ?? '', month: p.ym }, 'ghost small') : '';
+    const transport = o.transport ? btn('Настроить транспорт', 'transport', { id: o.id }, 'ghost small') : '';
+    return `<div class="plan-record${skipped ? ' plan-record-skipped' : ''}">
+      <div class="item plan-record-entry" data-act="plan-entry" data-id="${esc(o.id)}" data-key="${esc(o.key)}">
+        <div class="ico" aria-hidden="true">${icon}</div><div class="grow"><div class="t">${esc(o.name)}</div><div class="s">${subtitle}</div></div>
+        <div class="amt ${o.type === 'income' ? 'pos' : ''}">${money(o.amount)}</div><span class="muted" aria-hidden="true">›</span>
+      </div>
+      ${progress}
+      ${skip || transport ? `<div class="plan-record-actions row wrap gap">${skip}${transport}</div>` : ''}
+    </div>`;
   };
-  const section = (title, rows, spread = false) => rows.length ? `${sec(title, money(rows.reduce((sum, x) => sum + x.amount, 0)))}<div class="list">${rows.map((o) => row(o, spread)).join('')}</div>` : '';
+  const section = (title, rows, spread = false) => rows.length ? `${sec(title, money(rows.reduce((sum, x) => sum + (x.status === 'skipped' ? 0 : x.amount), 0)))}<div class="list">${rows.map((o) => row(o, spread)).join('')}</div>` : '';
   return `
     <div class="row between"><h1>План</h1>${btn('＋ Добавить', 'item-add', { month: p.ym }, 'small')}</div>
     <div class="plan-month-nav">
@@ -172,6 +185,7 @@ export function planTab() {
       ${btn('💬 Записать фразой', 'nl', {}, 'ghost small')}
       ${offset > 0 && offset <= 6 ? btn('🗓 Прогноз на этот месяц', 'forecast', { k: offset }, 'ghost small') : btn('📋 Подробный текущий план', 'view', { name: 'plan', title: 'План подробно' }, 'ghost small')}
       ${btn('Регулярные и разовые пункты', 'plan-templates', {}, 'ghost small')}
+      ${p.spreads.some((x) => x.transport) ? '' : btn('Настроить транспорт', 'transport', {}, 'ghost small')}
     </div>`;
 }
 
@@ -214,7 +228,7 @@ function reserveBlock() {
   const incomes = s.items.filter((i) => i.type === 'income' && !i.once);
   if (!r) return `<div class="card"><p class="small" style="margin-top:0">Отдельные деньги под аренду, коммуналку и интернет. Платежи из копилки не уменьшают деньги на карте, а приложение подсказывает, сколько отложить с дохода.</p>
     ${btn('🏠 Включить копилку', 'reserve-set', {}, 'block')}</div>
-    ${sec('Транспорт')}<div class="card"><p class="small muted" style="margin-top:0">Формула: проездной + ставка за каждый рабочий день цикла (по производственному календарю).</p>${btn('🚌 Настроить транспорт', 'transport', {}, 'ghost block')}</div>`;
+    ${sec('Транспорт')}<div class="card">${btn('🚌 Настроить транспорт', 'transport', {}, 'ghost block')}</div>`;
   return `${r.contract ? `<div class="small muted">Счёт: договор …${esc(r.contract)}</div>` : ''}
     ${s.settings.reserveStep ? `<div class="small muted" style="margin-bottom:8px">Перевод округляется до ${money(s.settings.reserveStep)}</div>` : ''}
     <div class="row gap wrap" style="margin-bottom:10px">${btn('➕ Перевёл в копилку', 'reserve-deposit', {}, 'grow')}${btn('✏️ Изменить остаток', 'reserve-set', {}, 'ghost')}</div>
