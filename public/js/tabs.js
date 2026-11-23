@@ -1,11 +1,12 @@
-// Вкладки: главная, траты, план, цели, резерв, ещё.
-import { S, api, store } from './state.js';
-import { $, tz, esc, money, isoStr, ymLabel, ymGen, dayKey, timeStr, dayLabel, catIcon, catTitle, thisMonth, recentNames, setInfo } from './util.js';
+// Вкладки: главная, история, план, цели, резерв, ещё.
+import { S, api } from './state.js';
+import { $, tz, esc, money, isoStr, ymLabel, ymGen, catIcon, catTitle, thisMonth, recentNames, setInfo } from './util.js';
 import { btn } from './ui.js';
-import { compareSpends, matchesQuery } from '../stats.js';
+import { compareSpends } from '../stats.js';
+import { historyTab } from './history.js';
 
 // ---------- вкладки ----------
-export const TABS = [['home', '🏠', 'Главная'], ['spends', '🧾', 'Траты'], ['plan', '📅', 'План'], ['goals', '🎯', 'Цели'], ['reserve', '🏦', 'Счета'], ['more', '⚙️', 'Ещё']];
+export const TABS = [['home', '🏠', 'Главная'], ['history', '🧾', 'История'], ['plan', '📅', 'План'], ['goals', '🎯', 'Цели'], ['reserve', '🏦', 'Счета'], ['more', '⚙️', 'Ещё']];
 
 // Деньги на карте сейчас (после последнего ответа сервера)
 export const curBalance = () => (S.state.balance ? S.state.cardBalance : S.state.period.now);
@@ -143,46 +144,10 @@ function dynamicsBlock() {
     <div class="row between small muted"><span>14 дней назад</span><span>сегодня</span></div></div>`;
 }
 
-function spendsTab() {
-  const s = S.state;
-  const months = [...new Set(s.spends.map((x) => dayKey(x.ts).slice(0, 7)))];
-  const cur = thisMonth();
-  if (!months.includes(cur)) months.unshift(cur);
-  const topups = s.topups.length ? `<h2>Пополнения и снятия</h2><div class="list">${s.topups.map((t) => `
-    <div class="item" style="cursor:default"><div class="ico">💵</div><div class="grow"><div class="t">${esc(t.name)}</div><div class="s">${dayLabel(dayKey(t.ts))}${t.by ? ` · ${esc(t.by)}` : ''}</div></div><div class="amt ${t.amount < 0 ? '' : 'pos'}">${t.amount < 0 ? '−' : '+'}${money(Math.abs(t.amount))}</div>
-    ${btn('↩️', 'topup-undo', { id: t.id }, 'ghost small')}</div>`).join('')}</div>` : '';
-  return `
-    <div class="row between"><h1>Траты</h1><div class="row gap">${btn('⬇️ CSV', 'export-csv', {}, 'ghost small')}${btn('➕ Трата', 'spend-add', {}, 'small')}</div></div>
-    <div class="row gap"><select id="flt-month" data-input="flt-month" class="grow">
-      ${months.map((m) => `<option value="${m}" ${(S.filter.month === 'cur' ? cur : S.filter.month) === m ? 'selected' : ''}>${ymLabel(m)}</option>`).join('')}
-      <option value="all" ${S.filter.month === 'all' ? 'selected' : ''}>За всё время</option></select>
-      <input id="flt-q" data-input="flt-q" placeholder="Поиск" value="${esc(S.filter.q)}" class="grow"></div>
-    ${limitsBlock()}<div id="spend-list">${spendList()}</div>${topups}`;
-}
-
 function limitsBlock() {
   const list = S.state.catLimits ?? [];
   if (!list.length) return '';
   return `<h2>Лимиты на месяц</h2><div class="card">${list.map((l) => { const over = l.spent > l.limit; return `<div class="tap" data-act="cat-limit-edit" data-cat="${esc(l.cat)}" style="margin:2px 0 8px"><div class="row between small"><span>${esc(catTitle(l.cat))}</span><b class="${over ? 'neg' : ''}">${money(l.spent)} из ${money(l.limit)}</b></div><div class="bar ${over ? 'over' : ''}"><i style="width:${Math.min(100, Math.round(l.spent / l.limit * 100))}%"></i></div></div>`; }).join('')}</div>`;
-}
-
-export function spendList() {
-  const s = S.state;
-  const month = S.filter.month === 'cur' ? thisMonth() : S.filter.month;
-  const q = S.filter.q.trim().toLowerCase();
-  const rows = s.spends.filter((x) => (month === 'all' || dayKey(x.ts).startsWith(month))
-    && matchesQuery(x, q, { catTitle, dayLabel, dayKey }));
-  if (!rows.length) return `<div class="center pad"><p class="muted">${q ? 'По такому запросу ничего нет' : 'В этом месяце трат пока нет. Запиши первую, например «кофе 450»'}</p>${btn('🧾 Записать трату', 'spend-add', {}, '')}</div>`;
-  const sum = rows.reduce((a, x) => a + x.amount, 0);
-  const groups = new Map();
-  for (const x of rows) { const k = dayKey(x.ts); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
-  const note = s.spendsTotal > s.spends.length ? `<p class="small muted center">Показаны последние ${s.spends.length} из ${s.spendsTotal}</p>` : '';
-  const swipeHint = store.get('swipe-hint') ? '' : `<div class="card small row between"><span>Смахни трату влево, чтобы удалить, или вправо, чтобы изменить. Можно и просто нажать на неё.</span>${btn('Понятно', 'swipe-ok', {}, 'ghost small')}</div>`;
-  return `${swipeHint}<div class="card row between"><span class="muted">Итого</span><b>${money(sum)}</b></div>
-    ${[...groups].map(([k, list]) => `${sec(dayLabel(k), money(list.reduce((a, x) => a + x.amount, 0)))}<div class="list">${list.map((x) => `
-      <div class="swipe"><div class="sw sw-l">✏️ Изменить</div><div class="sw sw-r">🗑 Удалить</div><div class="item" data-act="spend-edit" data-swipe data-id="${esc(x.id)}"><div class="ico">${catIcon(x.cat)}</div>
-        <div class="grow"><div class="t">${esc(x.name || catTitle(x.cat))}</div><div class="s">${timeStr(x.ts)}${x.by ? ` · ${esc(x.by)}` : ''}${x.src === 'bank' ? ' · из выписки' : ''}</div></div>
-        <div class="amt">${money(x.amount)}</div></div></div>`).join('')}</div>`).join('')}${note}`;
 }
 
 export const whenText = (it) => it.everyLabel ? it.everyLabel[0].toUpperCase() + it.everyLabel.slice(1) : it.spread ? 'В течение месяца' : it.once ? `Один раз · ${it.day}-го, ${ymLabel(it.once)}` : `Каждый месяц · ${it.day}-го`;
@@ -314,7 +279,7 @@ export function moreTab() {
     <p class="small muted center">Изменения сразу видны в боте, а закреплённая сводка в чате обновляется сама.</p>`;
 }
 
-export const TAB = { home: homeTab, spends: spendsTab, plan: planTab, goals: goalsTab, reserve: reserveTab, more: moreTab };
+export const TAB = { home: homeTab, history: () => historyTab(limitsBlock()), plan: planTab, goals: goalsTab, reserve: reserveTab, more: moreTab };
 
 let renderedTab = null;
 export function render() {

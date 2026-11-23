@@ -70,6 +70,13 @@ h2 .sum { font-size: 14px; font-weight: 600; color: var(--hint); white-space: no
 .item .s { font-size: 13px; color: var(--hint); }
 .item .amt { font-weight: 600; white-space: nowrap; }
 
+.history-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.history-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.history-filters input { grid-column: 1 / -1; }
+.history-totals { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; }
+.history-totals b { display: block; }
+.history-items .history-entry:not(:last-child) .item { border-bottom: 1px solid var(--line); }
+
 button, .btn { font: inherit; border: 0; border-radius: 12px; padding: 10px 14px; background: var(--btn); color: var(--btn-text); font-weight: 600; cursor: pointer; }
 button.ghost { background: var(--bg2); color: var(--text); }
 button.danger { background: color-mix(in srgb, var(--bad) 14%, var(--bg)); color: var(--bad); }

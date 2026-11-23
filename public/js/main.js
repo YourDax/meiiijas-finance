@@ -2,7 +2,8 @@
 import { tgw, S, store, api, act, hooks } from './state.js';
 import { $, esc, money, dayKey, dayLabel, catIcon, setInfo, toast } from './util.js';
 import { closeSheet, sheet, btn } from './ui.js';
-import { spendList, render } from './tabs.js';
+import { render } from './tabs.js';
+import { historyList } from './history.js';
 import { H, deleteSpendWithUndo } from './handlers.js';
 
 hooks.render = render;
@@ -59,13 +60,17 @@ document.addEventListener('keydown', (e) => {
     if (primary) { e.preventDefault(); primary.click(); }
   }
 });
-document.addEventListener('input', (e) => {
-  const k = e.target.dataset?.input;
-  if (k === 'flt-q') { S.filter.q = e.target.value; const l = $('#spend-list'); if (l) l.innerHTML = spendList(); }
-});
-document.addEventListener('change', (e) => {
-  if (e.target.dataset?.input === 'flt-month') { S.filter.month = e.target.value; const l = $('#spend-list'); if (l) l.innerHTML = spendList(); }
-});
+function updateHistory(e) {
+  const key = e.target.dataset?.input;
+  const filter = { 'history-q': 'q', 'history-month': 'month', 'history-kind': 'kind' }[key];
+  if (!filter || (filter === 'q') !== (e.type === 'input')) return;
+  S.filter[filter] = e.target.value;
+  S.historyLimit = 60;
+  const list = $('#history-list');
+  if (list) list.innerHTML = historyList();
+}
+document.addEventListener('input', updateHistory);
+document.addEventListener('change', updateHistory);
 
 // Файл выписки: читаем как base64 и показываем предпросмотр, прежде чем что-то записывать
 function bindPdf() {

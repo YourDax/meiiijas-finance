@@ -4,6 +4,7 @@ import { $, esc, money, isoStr, dayKey, timeStr, dayLabel, catTitle, thisMonth, 
 import { renderExtras } from './extras.js';
 import { closeSheet, sheet, val, field, buttons, btn, infoSheet } from './ui.js';
 import { whenText, render, curBalance } from './tabs.js';
+import { historyList } from './history.js';
 import { itemForm, bindItemForm, confirmSheet, leftoverSheet } from './forms.js';
 
 // ---------- действия ----------
@@ -20,6 +21,7 @@ export async function deleteSpendWithUndo(id) {
       if (await act('spend_restore', keep, { silent: true })) toast('Трата возвращена');
     },
   });
+  return true;
 }
 
 // Что стало с деньгами после отметки: показываем новый баланс
@@ -56,12 +58,21 @@ export const H = {
   close: () => closeSheet(),
   ...renderExtras,
 
-  'export-csv'() {
+  'export-csv'(d = {}) {
+    if (d.history) {
+      const month = S.filter.month === 'cur' ? thisMonth() : S.filter.month;
+      const kind = S.filter.kind;
+      const selected = month === 'all' && kind === 'all' ? '' : btn('По периоду и типу', 'export-run', { history: '1', month, kind });
+      sheet('Экспорт истории', `<p class="small muted">CSV придёт в личный чат с ботом.</p>${buttons(selected, btn('Вся история', 'export-run', { history: '1' }, selected ? 'ghost' : ''))}`);
+      return;
+    }
     sheet('Экспорт трат', `<p class="small muted">Файл придёт в личный чат с ботом. Открой его в Excel или Google Таблицах.</p>${buttons(btn('За этот месяц', 'export-run', { range: 'month' }), btn('За всё время', 'export-run', { range: 'all' }, 'ghost'))}`);
   },
   async 'export-run'(d) {
-    const r = await act('export_csv', d.range === 'month' ? { month: thisMonth() } : {}, { silent: true });
-    if (r) { closeSheet(); toast(`Отправил файл в чат с ботом: ${r.rows} трат`); }
+    const payload = d.history ? { history: true, month: d.month, kind: d.kind === 'all' ? undefined : d.kind }
+      : d.range === 'month' ? { month: thisMonth() } : {};
+    const r = await act('export_csv', payload, { silent: true });
+    if (r) { closeSheet(); toast(`Файл отправлен в чат с ботом · записей: ${r.rows}`); }
   },
   usage() {
     const u = S.state.usage;
@@ -71,7 +82,12 @@ export const H = {
   tab: (d) => { S.tab = d.tab; render(); scrollTo(0, 0); },
 
   // Тап по категории на главной → траты этой категории за текущий месяц
-  'cat-filter'(d) { S.filter = { month: 'cur', q: catTitle(d.cat) }; S.tab = 'spends'; render(); scrollTo(0, 0); },
+  'cat-filter'(d) { S.filter = { month: 'cur', kind: 'spend', q: catTitle(d.cat) }; S.historyLimit = 60; S.tab = 'history'; render(); scrollTo(0, 0); },
+  'history-reset'() { S.filter = { month: 'all', kind: 'all', q: '' }; S.historyLimit = 60; render(); },
+  'history-more'() {
+    S.historyLimit += 60;
+    $('#history-list').innerHTML = historyList();
+  },
   chip(d) { $('#q-name').value = d.name; $('#q-amt').focus(); },
   // Плавающая «＋»: все способы что-то добавить в одном месте
   'add-menu'() {
@@ -193,7 +209,58 @@ export const H = {
     if (r) toast(`Отменено: ${r.name} · на карте ${money(curBalance())}`);
   },
   'goto-plan'() { closeSheet(); S.tab = 'plan'; render(); scrollTo(0, 0); },
-  async 'topup-undo'(d) { if (await ask('Отменить эту запись? Баланс вернётся как было.')) await act('topup_undo', { id: d.id }); },
+  'topup-add'(d) {
+    const withdraw = d.kind === 'withdraw';
+    const save = withdraw ? 'withdraw-save' : 'topup-save';
+    sheet(withdraw ? 'Новое снятие' : 'Новое пополнение', `
+      ${field('amount', 'Сумма', 'inputmode="decimal" placeholder="5000"')}
+      ${field('name', 'Название (необязательно)', 'maxlength="40"')}
+      ${buttons(btn('Записать', save), btn('Закрыть', 'close', {}, 'ghost'))}`);
+  },
+  'topup-edit'(d) {
+    const x = S.state.topups.find((o) => o.id === d.id);
+    if (!x) return;
+    const title = x.amount < 0 ? 'Снятие' : 'Пополнение';
+    const meta = `<p class="small muted">${dayLabel(dayKey(x.ts))}, ${timeStr(x.ts)}${x.by ? ` · ${esc(x.by)}` : ''}</p>`;
+    const cancel = btn('Отменить операцию', 'topup-undo', { id: x.id }, 'danger');
+    if (x.debtId || x.debtNew) {
+      sheet(title, `${meta}<p><b>${esc(x.name)}</b> · ${money(Math.abs(x.amount))}</p>
+        <p class="small muted">Операция связана с долгом. Чтобы исправить её, отмени запись и запиши операцию с долгом заново.</p>${buttons(cancel, btn('Закрыть', 'close', {}, 'ghost'))}`);
+      return;
+    }
+    sheet(title, `${meta}${field('amount', 'Сумма', `inputmode="decimal" value="${Math.abs(x.amount)}"`)}
+      ${field('name', 'Название', `maxlength="40" value="${esc(x.name)}"`)}
+      ${buttons(btn('Сохранить', 'topup-edit-save', { id: x.id }), cancel)}`);
+  },
+  async 'topup-edit-save'(d) {
+    const amount = parseAmt(val('amount'));
+    if (!amount) return toast('Введи сумму', true);
+    if (await act('topup_edit', { id: d.id, amount, name: val('name') })) { closeSheet(); toast('Операция обновлена'); }
+  },
+  async 'topup-undo'(d) {
+    if (!(await ask('Отменить эту операцию?'))) return;
+    if (await act('topup_undo', { id: d.id })) { closeSheet(); toast('Операция отменена'); }
+  },
+  'history-plan'(d) {
+    const x = S.state.confirmedHistory?.find((o) => o.key === d.id);
+    if (!x) return;
+    const title = x.kind === 'topup' ? 'Доход по плану' : 'Платёж по плану';
+    const details = `<p><b>${esc(x.name)}</b></p><p class="small muted">${dayLabel(dayKey(x.ts))}, ${timeStr(x.ts)}${x.fromReserve ? ' · из копилки' : ''}</p>`;
+    const cancel = btn('Снять подтверждение', 'history-plan-undo', { key: x.key }, 'danger');
+    const actions = x.editable ? `${field('amount', 'Фактическая сумма', `inputmode="decimal" value="${x.amount}"`)}
+      ${buttons(btn('Сохранить', 'history-plan-save', { key: x.key }), cancel)}`
+      : `<p>${money(x.amount)}</p><p class="small muted">Чтобы исправить сумму, сними подтверждение и отметь операцию в плане заново.</p>${buttons(cancel, btn('Закрыть', 'close', {}, 'ghost'))}`;
+    sheet(title, details + actions);
+  },
+  async 'history-plan-save'(d) {
+    const amount = parseAmt(val('amount'));
+    if (!amount) return toast('Введи сумму', true);
+    if (await act('occ_edit_amount', { key: d.key, amount })) { closeSheet(); toast('Фактическая сумма обновлена'); }
+  },
+  async 'history-plan-undo'(d) {
+    if (!(await ask('Снять подтверждение этой операции?'))) return;
+    if (await act('occ_undo', { key: d.key })) { closeSheet(); toast('Подтверждение снято'); }
+  },
 
   'spend-add'() {
     sheet('Новая трата', `${field('amount', 'Сумма', 'inputmode="decimal" placeholder="450"')}${field('name', 'На что', 'maxlength="60" placeholder="Кофе"')}
@@ -217,22 +284,19 @@ export const H = {
       <label for="f-cat">Категория</label><select id="f-cat">${Object.entries(S.state.cats).map(([k, c]) => `<option value="${esc(k)}" ${x.cat === k ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
       ${spreads.length ? `<label for="f-link">Засчитывать в обязательную трату</label><select id="f-link"><option value="auto" ${!x.linkId ? 'selected' : ''}>Автоматически по категории</option><option value="none" ${x.linkId === 'none' ? 'selected' : ''}>Не засчитывать</option>${spreads.map((i) => `<option value="${esc(i.id)}" ${x.linkId === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select>` : ''}
       <input type="hidden" id="f-id" value="${esc(x.id)}">
-      ${buttons(btn('Сохранить', 'spend-save'), btn('Удалить', 'del', { id: x.id }, 'danger'))}`);
+      ${buttons(btn('Сохранить', 'spend-save'), btn('Удалить', 'history-spend-delete', { id: x.id }, 'danger'))}`);
   },
   async 'spend-save'() {
     const id = val('id'); const x = S.state.spends.find((s) => s.id === id);
     if (!x) return;
     const amount = parseAmt(val('amount'));
     if (!amount) return toast('Не понял сумму', true);
-    const steps = [];
-    if (amount !== x.amount) steps.push(['edit', { id, field: 'amount', value: String(amount) }]);
-    if (val('name') !== x.name) steps.push(['edit', { id, field: 'name', value: val('name') }]);
-    if (val('date') && val('date') !== dayKey(x.ts)) steps.push(['edit_date', { id, date: val('date') }]);
-    if (val('cat') && val('cat') !== x.cat) steps.push(['edit_cat', { id, cat: val('cat') }]);
-    if ($('#f-link') && val('link') !== (x.linkId ?? 'auto')) steps.push(['edit_link', { id, link: val('link') }]);
-    for (const [a, p] of steps) if (!(await act(a, p, { silent: true }))) return;
-    closeSheet(); haptic('success');
+    const date = val('date');
+    const r = await act('spend_edit', { id, amount, name: val('name'), cat: val('cat'),
+      date: date !== dayKey(x.ts) ? date : undefined, link: val('link') || undefined });
+    if (r) { closeSheet(); afterSpend(r, 'Трата обновлена'); }
   },
+  async 'history-spend-delete'(d) { if (await ask('Удалить трату?') && await deleteSpendWithUndo(d.id)) closeSheet(); },
   async del(d) { if (await ask('Удалить?')) { if (await act('delete', { id: d.id })) closeSheet(); } },
 
   'item-add'() {
