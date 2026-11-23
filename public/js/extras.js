@@ -58,11 +58,16 @@ export const renderExtras = {
       ${minus('Отложить на следующий месяц', p.reserveNextPeriod, b.next)}
       ${Math.abs(later) >= 1 ? detail('Будущие доходы месяца за вычетом их платежей', signed(later), b.future) : ''}
       ${line('Остаётся на жизнь', money(p.cycleTotal))}
-      ${p.freeToday >= 1 ? line('Прибавляем потраченное сегодня: оно входит в лимит дня', `+${money(p.freeToday)}`) : ''}
+      ${p.freeToday > 0 ? line('Восстанавливаем сумму до сегодняшних трат', `+${money(p.freeToday)}`) : ''}
       ${line('Дней впереди', p.cycleDays)}
       ${line('На один день', money(p.dayBudget))}
       ${line('Уже потрачено сегодня из лимита', money(p.freeToday))}
       ${line('Сегодня ещё можно', money(p.leftToday), p.leftToday <= 0 ? 'neg' : 'pos')}
+      ${p.afterOverspend?.days > 0 ? `<div class="overspend-forecast">
+        ${line('Остаток на следующие дни', money(Math.max(0, p.cycleTotal)))}
+        ${line('Осталось дней, начиная с завтра', p.afterOverspend.days)}
+        ${line('С завтра в среднем', `${money(p.afterOverspend.perDay)} в день`)}
+      </div>` : ''}
     </div>${buttons(btn('Понятно', 'close'))}`);
   },
 

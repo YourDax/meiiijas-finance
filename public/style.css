@@ -52,6 +52,7 @@ h2 .sum { font-size: 14px; font-weight: 600; color: var(--hint); white-space: no
 .card.hero { padding: 18px 16px 6px; background: var(--accent-soft); border-color: color-mix(in srgb, var(--link) 45%, var(--line)); }
 .hero .bar { margin: 12px 0 8px; background: color-mix(in srgb, var(--text) 16%, transparent); }
 .hero-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 8px -16px 0; padding: 12px 16px; border-top: 1px solid color-mix(in srgb, var(--link) 35%, var(--line)); }
+.overspend-forecast { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .lines > .row { padding: 7px 0; }
 .lines > .row + .row { border-top: 1px solid var(--line); }
 .big { font-size: 34px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }

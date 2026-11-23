@@ -126,6 +126,36 @@ test('«сегодня ещё» = дневной бюджет минус пот�
   assert.equal(p1.leftToday, r2(p0.dayBudget - 150));
 });
 
+test('после перерасхода остаток делится на дни с завтрашнего дня', () => {
+  const data = normalize({
+    balance: { amount: 19361, ts: today.ts - 1000 },
+    items: [
+      { id: 'income', type: 'income', day: 5, amount: 40000, name: 'Аванс' },
+      { id: 'trn', type: 'bill', day: null, amount: 2427, name: 'Транспорт', spread: true, cat: 'transport' },
+    ],
+  });
+  assert.equal(computePeriod(data, today).afterOverspend, null);
+  data.spends = [{ id: 's', amount: 2167, cat: 'cafe', ts: today.ts }];
+  const p = computePeriod(data, today);
+  assert.equal(p.dayBudget, 1411.17);
+  assert.equal(p.leftToday, 0);
+  assert.deepEqual(p.afterOverspend, { days: 11, perDay: 1342.45 });
+  data.spends.push({ id: 'extra', amount: 110, cat: 'cafe', ts: today.ts });
+  assert.deepEqual(computePeriod(data, today).afterOverspend, { days: 11, perDay: 1332.45 });
+  data.spends = [];
+  assert.equal(computePeriod(data, today).afterOverspend, null);
+});
+
+test('прогноз после перерасхода учитывает нехватку денег и последний день периода', () => {
+  const data = normalize({
+    balance: { amount: 1000, ts: today.ts - 1000 },
+    spends: [{ id: 's', amount: 1500, cat: 'cafe', ts: today.ts }],
+  });
+  assert.deepEqual(computePeriod(data, today).afterOverspend, { days: 7, perDay: 0 });
+  data.items = [{ id: 'income', type: 'income', day: 25, name: 'Аванс', amount: 10000 }];
+  assert.deepEqual(computePeriod(data, today).afterOverspend, { days: 0, perDay: null });
+});
+
 test('нет будущих доходов — считаем до конца месяца', () => {
   const d = normalize({ balance: { amount: 8000, ts: today.ts - 1000 }, items: [{ id: 'r', type: 'bill', amount: 1000, day: 28, name: 'Связь' }] });
   const p = computePeriod(d, today);

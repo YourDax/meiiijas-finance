@@ -60,6 +60,9 @@ export function homeTab() {
       <div class="big ${left <= 0 ? 'neg' : ''}">${money(left)}</div>
       <div class="bar ${p.freeToday > p.dayBudget ? 'over' : ''}"><i style="width:${p.dayBudget > 0 ? Math.min(100, Math.round(p.freeToday / p.dayBudget * 100)) : 0}%"></i></div>
       <div class="small muted">${p.dayBudget > 0 ? `Потрачено ${money(p.freeToday)} из ${money(p.dayBudget)} на день` : `Потрачено ${money(p.freeToday)}, свободных денег на день нет`}</div>
+      ${p.afterOverspend ? `<div class="small overspend-forecast">${p.afterOverspend.days > 0
+        ? `С завтра в среднем <b>${money(p.afterOverspend.perDay)} в день</b>`
+        : 'Сегодня последний день расчётного периода'}</div>` : ''}
       ${p.hasBalance ? '' : `<div class="small warn" style="margin-top:10px">Задай точный остаток — расчёты станут точнее.</div>`}
       <div class="hero-row tap" data-act="balance" aria-label="Изменить остаток"><span>${lead}${p.hasBalance ? '' : ' · оценка'} <span class="small muted">✏️</span></span><b class="mid">${money(p.now)}</b></div>
     </div>
